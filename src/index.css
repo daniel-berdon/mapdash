@@ -1,0 +1,777 @@
+:root {
+  /* Gris neutro, sin el tinte azulado de antes. */
+  --bg: #18181b;
+  --panel: #212125;
+  --panel-2: #2a2a31;
+  --line: #3a3a42;
+  --text: #ececee;
+  --muted: #9c9ca6;
+
+  /* Primario en azul (antes era púrpura/índigo). */
+  --primary: #2563eb;
+  --primary-2: #3b82f6;
+  --ok: #16a34a;
+  --ok-2: #22c55e;
+  --warn: #d97706;
+  --warn-2: #f59e0b;
+  --bad: #dc2626;
+  --bad-2: #ef4444;
+  --info: #0891b2;
+
+  --r: 10px;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.45 'Inter Variable', 'Inter', system-ui, -apple-system, sans-serif;
+  font-feature-settings: 'cv11', 'ss01';
+  /* El chofer usa esto en un soporte, en movimiento: nada de rebote elástico
+     ni de zoom accidental al tocar dos veces. */
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* --------------------------------------------------------------- botones --- */
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font: inherit;
+  font-weight: 500;
+  color: var(--text);
+  background: linear-gradient(135deg, #3a3a44 0%, #2a2a31 100%);
+  border: 1px solid #4a4a55;
+  border-top-color: #5a5a66;
+  border-bottom-color: #25252b;
+  border-radius: var(--r);
+  padding: 8px 12px;
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .08),
+    0 1px 2px rgba(0, 0, 0, .35),
+    0 2px 6px rgba(0, 0, 0, .2);
+  transition:
+    background .12s,
+    border-color .12s,
+    box-shadow .12s,
+    transform .1s,
+    opacity .12s,
+    filter .12s;
+}
+button svg { flex: none; filter: drop-shadow(0 1px 0 rgba(0, 0, 0, .25)); }
+button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #45454f 0%, #32323a 100%);
+  border-color: #5c5c68;
+  border-top-color: #6a6a76;
+  filter: brightness(1.04);
+}
+button:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, .35),
+    0 1px 1px rgba(0, 0, 0, .2);
+}
+button:disabled { opacity: .35; cursor: default; box-shadow: none; filter: none; }
+
+/* Variantes por lo que hace el botón, no por dónde está. */
+.b-primary {
+  color: #fff;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 55%, #1d4ed8 100%);
+  border-color: #2563eb;
+  border-top-color: #3b82f6;
+  border-bottom-color: #1e3a8a;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .12),
+    0 1px 2px rgba(0, 0, 0, .35),
+    0 3px 10px rgba(37, 99, 235, .28);
+}
+.b-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #4b8ff7 0%, #2f6aed 55%, #2563eb 100%);
+  border-color: #3b82f6;
+  filter: none;
+}
+.b-ok {
+  color: #fff;
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 55%, #15803d 100%);
+  border-color: #16a34a;
+  border-top-color: #22c55e;
+  border-bottom-color: #14532d;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .12),
+    0 1px 2px rgba(0, 0, 0, .35),
+    0 3px 10px rgba(22, 163, 74, .25);
+}
+.b-ok:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2dd468 0%, #1aaf50 55%, #16a34a 100%);
+  border-color: #22c55e;
+  filter: none;
+}
+.b-warn {
+  color: var(--warn-2);
+  background: linear-gradient(135deg, rgba(245, 158, 11, .18) 0%, rgba(217, 119, 6, .08) 100%);
+  border-color: rgba(245, 158, 11, .55);
+  border-top-color: rgba(251, 191, 36, .65);
+  border-bottom-color: rgba(180, 83, 9, .55);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .06),
+    0 1px 2px rgba(0, 0, 0, .25);
+}
+.b-warn:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(245, 158, 11, .28) 0%, rgba(217, 119, 6, .14) 100%);
+  border-color: var(--warn-2);
+  filter: none;
+}
+.b-danger {
+  color: var(--bad-2);
+  background: linear-gradient(135deg, rgba(239, 68, 68, .18) 0%, rgba(220, 38, 38, .08) 100%);
+  border-color: rgba(239, 68, 68, .55);
+  border-top-color: rgba(248, 113, 113, .6);
+  border-bottom-color: rgba(153, 27, 27, .55);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .06),
+    0 1px 2px rgba(0, 0, 0, .25);
+}
+.b-danger:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(239, 68, 68, .28) 0%, rgba(220, 38, 38, .14) 100%);
+  border-color: var(--bad-2);
+  filter: none;
+}
+.b-info {
+  color: #22d3ee;
+  background: linear-gradient(135deg, rgba(34, 211, 238, .16) 0%, rgba(8, 145, 178, .08) 100%);
+  border-color: rgba(34, 211, 238, .45);
+  border-top-color: rgba(103, 232, 249, .5);
+  border-bottom-color: rgba(14, 116, 144, .5);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .06),
+    0 1px 2px rgba(0, 0, 0, .25);
+}
+.b-info:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(34, 211, 238, .26) 0%, rgba(8, 145, 178, .14) 100%);
+  filter: none;
+}
+/* Ghost / iconos: no se ven como botones; solo cambian de color al hover. */
+.b-ghost {
+  background: transparent;
+  border-color: transparent;
+  border-top-color: transparent;
+  border-bottom-color: transparent;
+  box-shadow: none;
+  color: var(--muted);
+  transform: none;
+}
+.b-ghost:hover:not(:disabled) {
+  background: transparent;
+  border-color: transparent;
+  border-top-color: transparent;
+  border-bottom-color: transparent;
+  color: var(--text);
+  box-shadow: none;
+  filter: none;
+  transform: none;
+}
+.b-ghost:active:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+}
+.b-ghost svg { filter: none; }
+.b-on {
+  color: #fff;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 55%, #1d4ed8 100%);
+  border-color: #2563eb;
+  border-top-color: #3b82f6;
+  border-bottom-color: #1e3a8a;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .12),
+    0 1px 2px rgba(0, 0, 0, .35),
+    0 3px 10px rgba(37, 99, 235, .28);
+}
+
+.b-big { width: 100%; padding: 15px; font-size: 17px; font-weight: 600; }
+.b-sm { padding: 4px 8px; font-size: 13px; }
+.b-icon { padding: 6px; }
+
+input, select {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 9px 11px;
+  width: 100%;
+}
+input:focus, select:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+input[type='color'] { padding: 2px; height: 36px; cursor: pointer; }
+input[type='range'] { padding: 0; accent-color: var(--primary); }
+
+code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+.muted { color: var(--muted); }
+.err { color: var(--bad-2); }
+.map { width: 100%; height: 100%; }
+
+/* ----------------------------------------------------------------- marca --- */
+.brand { display: flex; align-items: center; gap: 10px; }
+/* 40px es el mínimo al que el lockup "Market Hunt 2026" del logo sigue
+   leyéndose; por debajo se convierte en una mancha. */
+.brand img { height: 40px; width: auto; display: block; }
+.brand b { font-size: 17px; letter-spacing: -.01em; }
+.brand-big { flex-direction: column; gap: 14px; margin-bottom: 6px; }
+.brand-big img { height: 96px; }
+
+/* --------------------------------------------------------------- splash --- */
+.splash {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 32px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  justify-content: center;
+  min-height: 100%;
+}
+.splash h1 { margin: 0; font-size: 26px; letter-spacing: -.02em; }
+.splash p { margin: 0; }
+.team-heading { display: flex; justify-content: center; }
+.team-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 13px;
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: 18px;
+  line-height: 1.2;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08);
+}
+.home { text-align: center; }
+.home-actions {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 8px;
+}
+@media (max-width: 480px) {
+  .home-actions { grid-template-columns: 1fr; }
+}
+.splash .card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+}
+.splash .card h3 { margin: 0 0 10px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.splash .card ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.splash .card li { display: flex; gap: 10px; color: var(--muted); }
+.splash .card li svg { flex: none; margin-top: 2px; color: var(--muted); }
+.splash .card b { color: var(--text); }
+
+.picker { display: flex; flex-direction: column; gap: 10px; }
+.picker button {
+  justify-content: flex-start;
+  padding: 15px;
+  text-align: left;
+  border-width: 2px;
+}
+.picker button b { display: block; font-size: 17px; }
+.picker button small { color: var(--muted); }
+.picker button:disabled { opacity: .65; }
+.picker-name { flex: 1; min-width: 0; }
+.picker-state {
+  flex: none;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+.picker-state.free { color: #86efac; background: rgba(22, 163, 74, .2); }
+.picker-state.used { color: #fcd34d; background: rgba(217, 119, 6, .2); }
+
+/* --------------------------------------------------------------- chofer --- */
+.driver { display: grid; grid-template-rows: auto auto 1fr auto; height: 100%; }
+
+.status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  font-weight: 600;
+  text-align: center;
+}
+.status.ok   { background: #14532d; color: #bbf7d0; }
+.status.warn { background: #78350f; color: #fde68a; }
+.status.bad  { background: #7f1d1d; color: #fecaca; }
+
+.maneuver {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--primary);
+}
+.maneuver b { font-size: 22px; white-space: nowrap; }
+.maneuver span { font-size: 15px; }
+/* Sin maniobra que dictar: mismo sitio, menos grito. */
+.maneuver.plain { background: var(--panel); border-bottom: 1px solid var(--line); }
+
+.driver .panel {
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.next { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.next .ico {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--primary);
+  font-weight: 700;
+}
+.next b { display: block; font-size: 17px; }
+.next small { color: var(--muted); }
+.next .chev { margin-left: auto; color: var(--muted); display: flex; }
+.next.done { justify-content: center; padding: 8px; gap: 8px; }
+
+.stops { margin: 0; padding: 0; list-style: none; max-height: 30vh; overflow: auto; }
+.stops li { display: flex; align-items: center; gap: 8px; padding: 7px 2px; border-bottom: 1px solid var(--line); }
+.stops li .n { width: 20px; color: var(--muted); font-size: 13px; }
+.stops li.done { color: var(--muted); }
+.stops li.done .nm { text-decoration: line-through; }
+
+.actions { display: flex; gap: 8px; }
+.actions button { flex: 1; }
+.actions button.b-icon { flex: 0 0 46px; }
+
+/* ---------------------------------------------------------------- admin --- */
+.admin { display: grid; grid-template-columns: 384px 1fr; height: 100%; }
+.admin aside {
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  overflow: hidden;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+/* Cabecera y bitácora quedan fijas; solo el centro se desplaza. */
+.admin aside .scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.admin aside header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.admin nav { display: flex; gap: 8px; }
+.admin nav button { flex: 1; }
+
+.list { display: flex; flex-direction: column; gap: 8px; }
+.hint { display: flex; gap: 8px; font-size: 13px; color: var(--muted); }
+.hint svg { flex: none; margin-top: 2px; }
+
+.team {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  cursor: pointer;
+}
+.team.sel { border-color: var(--primary); }
+.team.done { border-color: rgba(34, 197, 94, .45); }
+.team .row { display: flex; align-items: center; gap: 8px; }
+.team .row .grow {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.badge-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #bbf7d0;
+  background: rgba(22, 163, 74, .22);
+  border: 1px solid rgba(34, 197, 94, .45);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------- bitácora --- */
+.log {
+  flex: none;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* Más baja: deja sitio a la lista de equipos y al footer. */
+  max-height: 20vh;
+}
+.log h4 {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+}
+.log p { margin: 0; font-size: 13px; }
+.log ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.log li {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 5px 0;
+  font-size: 13px;
+  line-height: 1.35;
+  border-bottom: 1px solid rgba(58, 58, 66, .5);
+}
+.log li:last-child { border-bottom: 0; }
+.log time {
+  flex: none;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  padding-top: 1px;
+}
+.log li svg { flex: none; margin-top: 2px; }
+.log .txt { color: var(--muted); }
+.log .txt b { color: var(--text); font-weight: 600; }
+.log li.ok svg { color: var(--ok-2); }
+.log li.hit svg { color: var(--primary-2); }
+.log li.complete svg { color: var(--ok-2); }
+.log li.complete .txt { color: #bbf7d0; }
+.log li.warn svg { color: var(--warn-2); }
+.log li.bad svg { color: var(--bad-2); }
+
+.chip {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+}
+
+/* Línea de estado bajo el nombre del equipo. */
+.state { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.state svg { flex: none; }
+/* En vivo en rojo con punto, como el testigo de grabación. */
+.state.ok { color: var(--bad-2); font-weight: 600; }
+.state.warn { color: var(--warn-2); }
+/* "Sin datos": texto claro + triángulo en ámbar (el rojo ya es "En vivo"). */
+.state.bad { color: var(--text); font-weight: 600; }
+.state.bad svg { color: var(--warn-2); }
+.state.hit { color: var(--ok-2); font-weight: 600; }
+
+.admin-foot {
+  flex: none;
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+  padding-top: 2px;
+}
+.admin-foot a {
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+.admin-foot a:hover {
+  color: var(--text);
+  border-bottom-color: var(--line);
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--bad-2);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, .22);
+  animation: live 1.6s ease-in-out infinite;
+}
+@keyframes live {
+  50% { opacity: .3; box-shadow: 0 0 0 5px rgba(239, 68, 68, 0); }
+}
+/* El panel puede quedarse horas en una pantalla; quien tenga el sistema
+   configurado para no ver animaciones no debería sufrir un parpadeo constante. */
+@media (prefers-reduced-motion: reduce) {
+  .live-dot { animation: none; }
+}
+
+/* Solo identidad: el color del equipo. El estado lo dice la línea de abajo,
+   así no hay dos codificaciones de color peleándose en la misma fila. */
+.led { width: 10px; height: 10px; flex: none; border-radius: 50%; box-shadow: 0 0 0 2px var(--line); }
+.led.off { opacity: .35; }
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  cursor: default;
+}
+.detail label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--muted); }
+.detail.sticky {
+  position: sticky;
+  bottom: 0;
+  background: var(--panel);
+  border: 1px solid var(--primary);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.access-card {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 10px;
+  background: rgba(24, 24, 27, .7);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.access-head,
+.access-url,
+.access-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.access-head { justify-content: space-between; }
+.access-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.access-state {
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+.access-state.free { color: #86efac; background: rgba(22, 163, 74, .18); }
+.access-state.used { color: #fcd34d; background: rgba(217, 119, 6, .18); }
+.access-url {
+  padding: 5px 5px 5px 9px;
+  background: var(--bg);
+  border: 1px solid #303038;
+  border-radius: 9px;
+}
+.access-url code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: #c4c4cc;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.access-card small { color: var(--muted); font-size: 11px; }
+.access-actions { justify-content: flex-end; flex-wrap: wrap; }
+
+/* Ancho fijo: "Copiar link" y "¡Copiado!" no miden lo mismo y el botón
+   pegaría un salto al cambiar de texto. */
+.b-copy { min-width: 92px; }
+
+/* Confirmación de copiado: un salto corto, nada de rebotes largos. */
+.copied { animation: pop .28s ease-out; }
+@keyframes pop {
+  0% { transform: scale(.88); }
+  55% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .copied { animation: none; }
+}
+
+/* Columna con separación pareja: antes el select y los botones de abajo
+   quedaban pegados el uno al otro. */
+.route { display: flex; flex-direction: column; gap: 10px; }
+.route ol { margin: 0; padding: 0; list-style: none; }
+.route li { display: flex; align-items: center; gap: 4px; padding: 3px 0; }
+.route li .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.route li .n { width: 18px; color: var(--muted); font-size: 12px; }
+.route li.done .nm { text-decoration: line-through; color: var(--muted); }
+.route .sw { width: 10px; height: 10px; flex: none; border-radius: 50%; }
+
+@media (max-width: 720px) {
+  .admin { grid-template-columns: 1fr; grid-template-rows: 45vh 55vh; }
+}
+
+/* ------------------------------------------------------------ marcadores --- */
+.mk { display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer; user-select: none; }
+
+/* Los SVG de lucide-static vienen a 24px; aquí se quieren más chicos. */
+.mk .ic > svg { width: 15px; height: 15px; }
+
+/* Círculo del color de la parada, con su icono dentro. */
+.mk .ic {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--c);
+  color: var(--on-c);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .55), 0 0 0 2px rgba(255, 255, 255, .28);
+}
+/* Etiqueta en el mismo color, no en gris. Un velo del color sobre el gris
+   oscuro: dos capas, no dos colores (eso era CSS inválido y se descartaba). */
+.mk .lb {
+  background: linear-gradient(var(--c-soft), var(--c-soft)), rgba(24, 24, 27, .92);
+  border: 1px solid var(--c-txt);
+  color: var(--c-txt);
+  border-radius: 7px;
+  padding: 2px 7px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.mk-point .seq {
+  position: absolute;
+  top: -6px;
+  right: -7px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--bg);
+  color: var(--c-txt);
+  border: 1px solid var(--c-txt);
+  font-size: 11px;
+  line-height: 15px;
+  text-align: center;
+}
+.mk-point.visited { opacity: .5; }
+.mk-point.visited .lb { text-decoration: line-through; }
+
+/* Aguja del rumbo: orbita el círculo en vez de girar la furgoneta.
+   Con contorno claro para que se lea sobre cualquier fondo del mapa. */
+.mk-van .needle { position: absolute; inset: -12px; }
+.mk-van .needle::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: 50%;
+  margin-left: -7px;
+  border: 7px solid transparent;
+  border-bottom-color: var(--c);
+  filter: drop-shadow(0 0 1.5px #fff) drop-shadow(0 1px 1px rgba(0, 0, 0, .5));
+}
+/* Pastilla de estado arriba a la derecha del icono en el mapa. */
+.mk-van .ic .st-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .25), 0 1px 2px rgba(0, 0, 0, .35);
+  z-index: 2;
+}
+.mk-van .ic .st-ok {
+  background: var(--bad-2);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, .2),
+    0 0 0 3px rgba(239, 68, 68, .3),
+    0 1px 2px rgba(0, 0, 0, .35);
+  animation: live 1.6s ease-in-out infinite;
+}
+.mk-van .ic .st-warn { background: var(--warn-2); }
+.mk-van .ic .st-bad { background: #71717a; }
+.mk-van.stale { filter: grayscale(1); opacity: .55; }
+.mk-van.stale .st-dot { filter: none; opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .mk-van .ic .st-ok { animation: none; }
+}
+
+.mk-me {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #38bdf8;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 4px rgba(56, 189, 248, .35);
+}
+
+/* Controles del mapa: el `button` global les metía degradado oscuro.
+   Se restauran al estilo blanco original de MapLibre. */
+.maplibregl-ctrl-group {
+  background: #fff !important;
+  border: none !important;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, .1) !important;
+}
+.maplibregl-ctrl-group button {
+  background: #fff !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  color: #333 !important;
+  filter: none !important;
+  transform: none !important;
+  width: 29px !important;
+  height: 29px !important;
+  padding: 0 !important;
+}
+.maplibregl-ctrl-group button + button {
+  border-top: 1px solid #ddd !important;
+}
+.maplibregl-ctrl-group button:hover:not(:disabled) {
+  background: #f2f2f2 !important;
+  filter: none !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+.maplibregl-ctrl-group button:active:not(:disabled) {
+  background: #e6e6e6 !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+.maplibregl-ctrl-group button:disabled {
+  opacity: .45 !important;
+}
+.maplibregl-ctrl-icon {
+  filter: none !important;
+}

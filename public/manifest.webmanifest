@@ -1,0 +1,16 @@
+{
+  "name": "MapDash",
+  "short_name": "MapDash",
+  "description": "Seguimiento en vivo de rutas por equipo",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#18181b",
+  "theme_color": "#18181b",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

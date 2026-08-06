@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Favicon de MapDash. Se ve casi siempre a 16 px, así que solo lleva tres
+       formas: fondo, ruta y destino. Los pliegues de mapa de la versión
+       anterior se convertían en ruido a ese tamaño. -->
+  <rect width="512" height="512" rx="116" fill="#18181b"/>
+  <rect x="8" y="8" width="496" height="496" rx="110" fill="none" stroke="#2f2f38" stroke-width="16"/>
+
+  <!-- Ruta: de abajo-izquierda a arriba-derecha, el gesto del "dash". -->
+  <path d="M124 396C124 300 250 336 258 244c7-78 74-96 130-96"
+        fill="none" stroke="#2563eb" stroke-width="54"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Origen y destino. El rojo es el mismo del indicador "en vivo".
+       El origen va sin halo oscuro: cortaba la ruta y la dejaba desconectada. -->
+  <circle cx="124" cy="396" r="34" fill="#93c5fd"/>
+  <circle cx="388" cy="148" r="62" fill="#ef4444"/>
+  <circle cx="388" cy="148" r="22" fill="#18181b"/>
+</svg>
