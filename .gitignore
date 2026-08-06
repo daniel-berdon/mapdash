@@ -5,3 +5,6 @@ dist
 .vercel
 *.local
 .DS_Store
+
+# Config local del entorno de desarrollo, no del proyecto
+.claude
