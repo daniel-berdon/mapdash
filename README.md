@@ -1,183 +1,203 @@
+<div align="center">
+
+<img src="public/logo.png" alt="MapDash" width="96" />
+
 # MapDash
 
-Seguimiento en vivo de 9 vans durante una dinámica urbana.
-Panel admin con las vans en tiempo real, y una vista por chofer que comparte
-ubicación, muestra su ruta y navega — sin app nativa.
+**Seguimiento en vivo de vans durante una dinámica urbana.**
 
-- Panel admin: `/admin` (usuario + contraseña)
-- Vista chofer: `/d/<token>` (link individual) o `/d` (elige su equipo de una lista)
+Panel de organizador con todas las vans en tiempo real, y una vista por chofer
+que comparte ubicación, muestra su ruta y navega con voz — todo en el navegador,
+sin app nativa que instalar.
+
+[![React](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=white)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Vite](https://img.shields.io/badge/Vite-8-646cff?logo=vite&logoColor=white)](https://vite.dev)
+[![MapLibre](https://img.shields.io/badge/MapLibre_GL-6-295daa?logo=maplibre&logoColor=white)](https://maplibre.org)
+[![Supabase](https://img.shields.io/badge/Supabase-Postgres_·_Realtime-3ecf8e?logo=supabase&logoColor=white)](https://supabase.com)
+
+</div>
 
 ---
 
-## Puesta en marcha
+## Qué resuelve
 
-### 1. Supabase
+Una dinámica urbana con varias vans tiene tres problemas a la vez: **saber dónde
+está cada una**, **que cada chofer sepa a dónde va**, y **enterarse cuando algo
+se rompe** (se quedó sin señal, cerró la pestaña, se saltó una parada). MapDash
+cubre los tres en una sola pantalla y con un link por chofer.
 
-1. Crea un proyecto en [supabase.com](https://supabase.com) (plan gratuito).
-2. SQL Editor → ejecuta las migraciones de `supabase/migrations/` **en orden**:
-   `0001_init.sql` y después `0002_events.sql`.
-3. Authentication → Users → **Add user**. Supabase exige un correo, pero el
-   login pide solo usuario: escribe el correo como `<usuario>@mapdash.local`.
-   Para entrar como `admin`, crea `admin@mapdash.local` con su contraseña.
-   Desactiva "Confirm email" o confírmalo a mano.
-4. Project Settings → API → copia `URL` y `anon public`.
+| Rol | Entra por | Qué ve |
+|---|---|---|
+| Organizador | `/admin` — usuario y contraseña | Mapa de todas las vans, rutas, paradas y bitácora |
+| Chofer | `/d/<token>` — link individual | Su ruta, su siguiente parada y navegación por voz |
+| Chofer | `/seleccion` — link general | Lista de equipos; elige el suyo y entra sin contraseña |
 
-### 2. Logo
+---
 
-Pon el logo del evento en `public/logo.svg` o `public/logo.png`. Aparece en el
-login, en el panel y en la pantalla de bienvenida del chofer. Si el archivo no
-existe se muestra solo el nombre “MapDash”, sin imagen rota.
+## Panel del organizador
 
-Mejor SVG si lo tienes: el logo se pinta a 40 px en el panel y a 96 px en las
-pantallas grandes, y un PNG pequeño se vería borroso en ese segundo caso.
+### Paradas
 
-### 3. Keys de mapas y rutas
+- **Crear con un clic en el mapa**, o arrastrar el marcador para reubicarla.
+- Cada parada tiene **nombre, color, icono** (de un catálogo) y **radio de llegada** ajustable de 10 a 300 m.
+- Mover o borrar una parada **recalcula sola** toda ruta que pasaba por ella.
+- Si una parada cae donde no hay calle, el error dice **cuál es** por su nombre, no coordenadas crudas.
 
-- **MapTiler** ([maptiler.com](https://www.maptiler.com), gratis 100k tiles/mes):
-  crea una API key y **restríngela a tu dominio**.
-  Sin key la app cae a OpenFreeMap, que funciona pero no tiene garantías.
-- **OpenRouteService** ([openrouteservice.org/dev](https://openrouteservice.org/dev),
-  gratis 2,000 req/día): crea una key. Esta **no** lleva prefijo `VITE_`: se queda
-  en el servidor porque ORS no permite restringirla por dominio.
+### Equipos y rutas
 
-### 4. Local
+- Alta de equipos con color propio, nombre del chofer y teléfono. Los campos se **guardan solos** al dejar de teclear.
+- Ruta por arrastre de paradas: agregar, quitar, reordenar con ▲▼.
+- **Optimizar orden** resuelve el TSP con el motor VROOM de OpenRouteService, respetando la primera parada como salida fija.
+- Cada ruta guarda su **trazo por calles, sus maniobras, distancia y duración**.
+- **Ocultar/mostrar** un equipo del mapa, y **Ubicar** para centrarse en su van.
 
-```bash
-cp .env.example .env   # y llena los 4 valores
-npm install
-npm run dev
+### Semáforo en vivo
+
+Cada equipo lleva un estado que se actualiza por Realtime, y un reloj propio en
+el panel: si la van deja de reportar, no manda nada — el gris tiene que salir
+del tiempo transcurrido, no de un evento.
+
+| Estado | Significa | Qué hacer |
+|---|---|---|
+| 🟢 **En vivo** | Datos frescos (<30 s) | Nada |
+| 🟠 **En Google Maps** | El chofer salió a Maps; se ve su última posición | Nada, es normal |
+| 🔴 **Sin datos hace X** | Más de 30 s callado | Llamarlo: teléfono bloqueado, sin señal o pestaña cerrada |
+| ⚪ **No ha iniciado** | Nunca abrió el link | Recordarle que lo abra |
+| 🏁 **Completada** | Todas sus paradas registradas | Nada |
+
+### Check-ins
+
+El check-in es **automático al entrar en el radio** de la parada, y lo decide el
+servidor: el cliente no puede falsear llegadas. Si el GPS falla, tanto el chofer
+como el organizador pueden marcar la llegada a mano — y el organizador también
+desmarcarla.
+
+### Bitácora de eventos
+
+**Últimos eventos** registra quién inició, quién llegó a qué parada, quién salió
+a Google Maps, quién recuperó la conexión, quién estuvo sin reportar y quién
+completó su ruta. Se genera con **triggers en la base**, así que queda escrito
+aunque el panel esté cerrado y sobrevive a recargar la página.
+
+### Control de acceso del chofer
+
+- **Copiar link** de cada equipo, listo para mandar por WhatsApp.
+- **Generar enlace nuevo** invalida al instante el anterior si se filtró.
+- **Liberar dispositivo** suelta el enlace para que otro teléfono lo tome.
+
+---
+
+## Vista del chofer
+
+### Antes de arrancar
+
+Pantalla de consentimiento explícito: se le dice que se compartirá su ubicación,
+que deje la pestaña al frente, cómo usar Google Maps sin romper el envío, y que
+puede terminar cuando quiera.
+
+### Durante la ruta
+
+- **Banda de maniobra** arriba: instrucción y metros que faltan al giro.
+- **Voz en español** que anuncia cada maniobra a 300 m y a 50 m, una vez cada una, y silenciable.
+- **Mapa que sigue y rota** con el rumbo. Si el chofer mueve el mapa con el dedo la cámara se suelta —para poder mirar alrededor— y **Centrar** la vuelve a enganchar.
+- **Ruta en dos tonos**: el tramo en curso a color pleno, lo que queda más tenue.
+- Lista de paradas plegable con las visitadas tachadas, y **Registrar llegada** a mano.
+- **Barra de estado** permanente: compartiendo, sin señal (con las posiciones en cola), detenido o sin permiso de ubicación.
+- **Botón rojo** para terminar y dejar de compartir, siempre visible.
+
+### Un solo teléfono por equipo
+
+El equipo se **reserva para un dispositivo** al iniciar. Si otro teléfono intenta
+entrar con el mismo link, ve una pantalla que le explica qué pasa y qué hacer; el
+enlace se libera solo tras **5 minutos sin reportar**, o al instante desde el
+panel. Dos pestañas del mismo teléfono también se resuelven: la última gana y la
+anterior suelta el GPS, para que el panel no vea dos vans idénticas.
+
+---
+
+## Cómo se mantiene el rastreo vivo
+
+El navegador **corta el GPS cuando el teléfono se bloquea o cuando otra app pasa
+al frente** — en iOS siempre, en Android casi siempre. Es una decisión de
+Apple/Google, no hay truco de PWA que lo evite. MapDash trabaja con eso, no
+contra eso:
+
+- **Wake Lock** para que la pantalla no se apague sola, con aviso al chofer si el navegador lo rechaza (Safari lo hace en batería baja).
+- **Aviso antes de salir**: al tocar "Google Maps" se reporta el estado `en_maps` con la última posición, para que el panel lo pinte en ámbar y no en gris.
+- **Reanudación automática** al volver a la pestaña: recupera el Wake Lock, vuelve a `live` y vacía lo que quedó pendiente.
+- **Buffer offline** en `localStorage` — hasta 300 posiciones, unos 25 minutos: se envían en orden cronológico al recuperar señal y el servidor descarta las que lleguen viejas.
+- **Recuperación tras recarga**: iOS descarta pestañas inactivas cuando anda escaso de memoria; el estado vive en `localStorage` y el rastreo vuelve solo, sin pedirle nada al chofer.
+- **Envío con filtro**: solo se manda si pasaron 3 s o si de verdad se movió 10 m, más un latido cada 5 s para detectar liberaciones del panel.
+
+### Las dos formas de navegar
+
+Ambas están disponibles y el chofer elige:
+
+**Google Maps por voz.** Toca "Google Maps", arranca la navegación y **vuelve a
+la pestaña**. Maps es app nativa y sigue dictando los giros desde el fondo; la
+pestaña al frente mantiene el GPS enviando. Abre la app nativa por
+`comgooglemaps://` y cae a la web si no está instalada.
+
+**Navegación propia, dentro de la app.** Siempre activa. Proyecta la posición
+sobre la polilínea de la ruta para saber en qué maniobra va, y **recalcula sola**
+si el chofer se desvía más de 100 m durante 15 s seguidos —el margen evita que
+un GPS nervioso dispare peticiones. La ruta se traza desde donde está el chofer,
+no desde la parada anterior. No tiene tráfico en tiempo real.
+
+---
+
+## Arquitectura
+
+```
+src/
+├─ pages/
+│  ├─ Admin.tsx        Panel: paradas, equipos, rutas, semáforo
+│  ├─ Driver.tsx       Vista del chofer + selector de equipo
+│  ├─ Login.tsx        Usuario y contraseña (Supabase Auth)
+│  └─ Home.tsx         Entrada a las dos vistas
+├─ components/
+│  ├─ Map.tsx          MapLibre: vans, paradas, rutas, encuadre
+│  └─ EventLog.tsx     Bitácora en vivo por Realtime
+├─ lib/
+│  ├─ useTracking.ts   GPS, Wake Lock, buffer offline, estados
+│  ├─ geo.ts           Haversine, proyección sobre ruta, tramos, buffer
+│  ├─ deviceLock.ts    Un equipo por dispositivo y por pestaña
+│  ├─ routing.ts       Cliente del proxy de rutas
+│  └─ supabase.ts      Tipos y RPC
+├─ api/route.ts        Proxy serverless a OpenRouteService
+└─ supabase/migrations Esquema, RPC, políticas y triggers
 ```
 
-### 5. Deploy (Vercel)
+**Convención de coordenadas:** siempre `[lng, lat]`, orden GeoJSON, igual que
+MapLibre y ORS. Mezclar los dos órdenes es el bug clásico de estos proyectos.
 
-```bash
-npx vercel
-```
+### Seguridad
 
-Carga las 4 variables en Vercel → Settings → Environment Variables.
-`ORS_API_KEY` va **sin** prefijo `VITE_`.
+- El chofer (rol `anon`) **no tiene acceso a ninguna tabla**. Solo puede llamar seis RPC: `get_driver_context`, `list_teams`, `claim_team`, `register_tracking_start`, `report_position` y `manual_checkin`.
+- El **check-in se decide en el servidor**, comparando contra el radio de la parada. El cliente no puede inventar llegadas.
+- El panel exige sesión autenticada; RLS deja las tablas solo para `authenticated`.
+- La key de OpenRouteService **no viaja al navegador**: vive en el proxy serverless, porque ORS no permite restringirla por dominio.
+- El link general `/seleccion` es, de hecho, la credencial: quien lo tenga puede entrar como cualquier equipo libre. Decisión consciente para una dinámica de un día; se cierra quitando el `grant` de `list_teams` a `anon`, sin tocar nada más.
 
-> HTTPS es obligatorio: sin él el navegador no da geolocalización.
-> Vercel ya lo trae; si despliegas en otro lado, asegúralo.
+### Límites conocidos
 
----
-
-## Uso el día del evento
-
-1. En **Paradas**, toca "Agregar parada" y haz clic en el mapa. Ajusta nombre,
-   color, icono y radio de llegada. Arrastra el marcador para reubicarlo.
-2. En **Equipos**, crea las 9 vans. A cada una:
-   - agrega sus paradas y ordénalas con ▲▼, o toca **Optimizar orden**;
-   - copia el link y mándalo al chofer por WhatsApp.
-
-   Alternativa: manda a todos el mismo link `/d` y que cada quien elija su
-   equipo de la lista. Más cómodo (un mensaje al grupo en vez de nueve), pero
-   quien tenga ese link puede entrar como cualquier equipo. Los links
-   individuales siguen funcionando igual y saltan el selector.
-3. Durante la dinámica el panel muestra el semáforo por equipo:
-
-   | Estado | Significa | Qué hacer |
-   |---|---|---|
-   | **En vivo** (rojo, con punto) | Datos frescos (<30 s) | Nada |
-   | En Google Maps (ámbar) | El chofer salió a Maps | Nada, es normal; se ve su última posición |
-   | Sin datos hace X (triángulo rojo) | >30 s callado | Llamarlo: teléfono bloqueado, sin señal o app cerrada |
-   | No ha iniciado (gris) | Nunca abrió el link | Recordarle abrir el link |
-
-Los check-ins son automáticos al entrar en el radio de la parada. Si el geofence
-falla, el admin puede marcarlos a mano con ✓.
-
-Abajo del panel, **Últimos eventos** lleva la bitácora: quién inició, quién
-llegó a qué parada, quién salió a Google Maps y quién estuvo sin reportar. Se
-genera con triggers en la base, así que queda registrado aunque el panel esté
-cerrado y sobrevive a recargar la página.
+- **Sin historial de recorrido.** Solo se guarda la posición actual, un renglón por equipo. Un replay post-evento habría que decidirlo antes: lo que no se guardó no se reconstruye.
+- **Sin tráfico en tiempo real.** Se compensa con *Optimizar orden*.
+- **Sin roles.** Un admin, creado a mano; un segundo se agrega desde el dashboard de Supabase sin tocar código.
 
 ---
-
-## Cómo navegan los choferes
-
-Hay dos formas y el chofer elige. Existen las dos porque **el navegador corta el
-GPS cuando el teléfono se bloquea o cuando otra app pasa al frente** — en iOS
-siempre, en Android casi siempre. Es una decisión de Apple/Google; no hay truco
-de PWA que lo evite.
-
-**Google Maps por voz (recomendado).** El chofer toca "Google Maps", arranca la
-navegación y **vuelve a la pestaña del navegador**. Google Maps es app nativa y
-sigue dictando los giros desde el fondo; la pestaña al frente mantiene el GPS
-enviando. Oye a Google y ve su mapa aquí.
-Requiere permiso de ubicación **"Siempre"** para Google Maps y volumen encendido.
-
-**Navegación dentro de la app.** Siempre activa: instrucciones de giro y voz en
-español, mapa que sigue y rota con el rumbo, y recálculo automático si se desvía
-más de 100 m. Nunca sale del navegador. No tiene tráfico en tiempo real.
-
-La cámara se suelta si el chofer mueve el mapa con el dedo, para poder mirar
-alrededor sin que cada lectura de GPS se lo arranque de las manos; el botón
-**Centrar** la vuelve a enganchar.
-
-Si el chofer se queda dentro de Google Maps, la app ya avisó al panel antes de
-salir (ámbar, con su última posición y su destino), y al volver a la pestaña se
-reanuda solo: recupera el Wake Lock y sube las posiciones que guardó sin señal.
-
----
-
-## Verificación
-
-```bash
-npm test
-```
-
-```bash
-npm run build
-```
-
-Antes del evento, en dos ventanas: `/admin` y `/d/<token>`. Mueve la posición
-con Chrome DevTools → Sensors → Custom location y comprueba que el marcador del
-admin se mueve en menos de 2 s y que el check-in se dispara dentro del radio.
-
-### Prueba de campo — obligatoria
-
-En coche, con un iPhone y un Android reales, soporte y cargador:
-
-1. **Que Google Maps siga hablando con el navegador al frente.** Es el supuesto
-   crítico de todo el diseño. Si falla en los teléfonos del cliente, hay que
-   confiar en la navegación propia de la app y decírselo antes del evento.
-2. Que el rastreo no se interrumpa mientras Maps habla desde el fondo.
-3. Que las instrucciones propias lleguen con tiempo y se oigan sobre el ruido.
-4. Que la batería aguante: GPS + pantalla encendida consume más de lo que
-   repone un cargador flojo.
-
-### Checklist de logística
-
-- Soporte de teléfono y cargador **por van**.
-- Datos móviles en los 9 teléfonos.
-- Permiso de ubicación en **"Preciso"** (iOS puede quedar en aproximado, ~1 km).
-- **Modo de bajo consumo apagado**: degrada el GPS.
-- Batería llena al salir.
-- Un teléfono de repuesto y la lista de paradas impresa como plan B.
-- Internet por cable para la pantalla del panel, no wifi de hotel.
-
----
-
-## Decisiones y límites
-
-- **Sin historial.** Solo se guarda la posición actual (un renglón por equipo).
-  Si el cliente quiere replay post-evento, hay que decidirlo **antes**: es una
-  tabla de solo inserción, y lo que no se guardó no se puede reconstruir.
-- **Sin tráfico en tiempo real.** Se compensa ordenando bien las rutas con
-  "Optimizar orden".
-- **Sin roles.** Un admin, creado a mano. Un segundo admin se crea en el
-  dashboard de Supabase en 30 segundos, sin tocar código.
-- **Seguridad**: el chofer (rol `anon`) no tiene acceso a ninguna tabla. Solo
-  puede llamar `get_driver_context`, `list_teams` y `report_position`. El
-  check-in se decide en el servidor: el cliente no puede falsear llegadas.
-- El link general `/d` es, de hecho, la credencial: quien lo tenga puede entrar
-  como cualquier equipo. Decisión consciente para una dinámica de un día. Si
-  algún día importa, se quita el `grant` de `list_teams` a `anon` y solo quedan
-  los links individuales — sin tocar nada más.
-- Si un link individual se filtra, **Regenerar** en el panel lo invalida al
-  instante.
 
 ## Stack
 
-React + Vite · MapLibre GL JS + MapTiler · Supabase (Postgres, Realtime, Auth) ·
-OpenRouteService · Vercel. Todo dentro de los planes gratuitos a esta escala.
+**React 19 + TypeScript + Vite** · **MapLibre GL JS** con teselas de MapTiler
+(fallback a OpenFreeMap) · **Supabase** para Postgres, Realtime y Auth ·
+**OpenRouteService** para rutas por calles, maniobras en español y optimización
+de orden · **Vercel** para hosting y la función serverless. Todo dentro de los
+planes gratuitos a esta escala.
+
+<div align="center">
+
+Desarrollado por [cactusdigital.mx](https://cactusdigital.mx)
+
+</div>
