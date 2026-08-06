@@ -15,6 +15,7 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  Search,
   Sparkles,
   Smartphone,
   Trash2,
@@ -29,6 +30,7 @@ import { STOP_ICONS, VanIcon, stopIcon } from '../components/icons'
 import Map, { type MapPoint, type MapVan } from '../components/Map'
 import { contrastText, readable } from '../lib/color'
 import { fmtDist, fmtDur, type LngLat } from '../lib/geo'
+import { geocodeOk, searchPlaces, type Place } from '../lib/geocode'
 import { getRoute, optimizeOrder } from '../lib/routing'
 import {
   supabase,
@@ -819,20 +821,133 @@ export default function Admin() {
         </footer>
       </aside>
 
-      <Map
-        className="map"
-        points={mapPoints}
-        vans={vans}
-        routes={shownRoutes}
-        onMapClick={adding ? (ll) => void addPoint(ll) : undefined}
-        onPointClick={(id) => {
-          setTab('paradas')
-          setEditPoint(id)
-        }}
-        onPointDragEnd={(id, ll) => void patchPoint(id, { lng: ll[0], lat: ll[1] })}
-        fitKey={focus?.key ?? (points.length ? 'pts' : '')}
-        fitTo={focus?.coords ?? points.map((p) => [p.lng, p.lat] as LngLat)}
-      />
+      <div className="map-wrap">
+        <Map
+          className="map"
+          points={mapPoints}
+          vans={vans}
+          routes={shownRoutes}
+          onMapClick={adding ? (ll) => void addPoint(ll) : undefined}
+          onPointClick={(id) => {
+            setTab('paradas')
+            setEditPoint(id)
+          }}
+          onPointDragEnd={(id, ll) => void patchPoint(id, { lng: ll[0], lat: ll[1] })}
+          fitKey={focus?.key ?? (points.length ? 'pts' : '')}
+          fitTo={focus?.coords ?? points.map((p) => [p.lng, p.lat] as LngLat)}
+        />
+        <MapSearch
+          near={points.length ? [points[0].lng, points[0].lat] : undefined}
+          onPick={(place) =>
+            // La marca de tiempo en la clave permite volver al mismo sitio dos
+            // veces seguidas después de haber movido el mapa a mano.
+            setFocus({ key: `place:${place.id}:${Date.now()}`, coords: place.coords })
+          }
+        />
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Buscador de direcciones sobre el mapa. Escribe una ciudad, una calle con
+ * número o el nombre de un lugar y el mapa se va ahí; no crea nada, solo mueve
+ * la cámara para poder poner la parada donde toca.
+ */
+function MapSearch({ near, onPick }: { near?: LngLat; onPick: (place: Place) => void }) {
+  const [open, setOpen] = useState(false)
+  const [q, setQ] = useState('')
+  const [results, setResults] = useState<Place[] | null>(null)
+  const [searching, setSearching] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  if (!geocodeOk) return null
+
+  const search = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const text = q.trim()
+    if (!text || searching) return
+    setSearching(true)
+    setErr(null)
+    try {
+      const found = await searchPlaces(text, near)
+      setResults(found)
+      if (!found.length) setErr('Sin resultados. Prueba con la ciudad o el estado.')
+      // Un solo resultado no merece una lista: se va directo.
+      else if (found.length === 1) {
+        onPick(found[0])
+        setResults(null)
+      }
+    } catch {
+      setErr('No se pudo buscar. Revisa la conexión.')
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  const close = () => {
+    setOpen(false)
+    setQ('')
+    setResults(null)
+    setErr(null)
+  }
+
+  // Plegado: solo la lupa, para no tapar el mapa cuando se quiere verlo entero.
+  if (!open) {
+    return (
+      <button
+        className="map-search-toggle"
+        title="Buscar dirección o ciudad"
+        onClick={() => setOpen(true)}
+      >
+        <Search size={18} />
+      </button>
+    )
+  }
+
+  return (
+    <div className="map-search">
+      <form onSubmit={(e) => void search(e)}>
+        <Search size={16} />
+        <input
+          // El campo aparece al abrir: se enfoca solo para poder escribir ya.
+          autoFocus
+          value={q}
+          placeholder="Buscar ciudad, calle o lugar…"
+          onChange={(e) => {
+            setQ(e.target.value)
+            setErr(null)
+          }}
+          onKeyDown={(e) => e.key === 'Escape' && close()}
+        />
+        <button type="submit" className="b-primary b-sm" disabled={searching || !q.trim()}>
+          {searching ? 'Buscando…' : 'Ir'}
+        </button>
+        <button type="button" className="b-ghost b-icon" title="Cerrar buscador" onClick={close}>
+          <X size={15} />
+        </button>
+      </form>
+
+      {err && <p className="map-search-err">{err}</p>}
+
+      {results?.length ? (
+        <ul>
+          {results.map((p) => (
+            <li key={p.id}>
+              <button
+                className="b-ghost"
+                onClick={() => {
+                  onPick(p)
+                  setResults(null)
+                }}
+              >
+                <MapPin size={15} />
+                <span>{p.name}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   )
 }
