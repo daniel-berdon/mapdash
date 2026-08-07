@@ -398,7 +398,41 @@ button.status { cursor: pointer; }
 .actions button.b-icon { flex: 0 0 46px; }
 
 /* ---------------------------------------------------------------- admin --- */
-.admin { display: grid; grid-template-columns: 384px 1fr; height: 100%; }
+.admin { display: grid; grid-template-columns: 384px 1fr; height: 100%; position: relative; }
+
+/* Ficha de edición: flota sobre el mapa, pegada a la barra lateral, para que
+   la lista de equipos o paradas siga entera detrás. */
+.sheet {
+  position: absolute;
+  z-index: 5;
+  top: 12px;
+  left: 396px;
+  width: 352px;
+  max-height: calc(100% - 24px);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--primary);
+  border-radius: 14px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .55);
+  overflow: hidden;
+}
+.sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.sheet-head b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet-body { overflow-y: auto; }
+/* El detalle ya no cuelga de una tarjeta: dentro de la ficha sobra el filete. */
+.sheet-body.detail { margin: 0; padding: 12px; border-top: 0; }
+
+/* En pantallas angostas no cabe al lado: se apoya en el borde de la barra. */
+@media (max-width: 1100px) {
+  .sheet { left: auto; right: 12px; }
+}
 .admin aside {
   background: var(--panel);
   border-right: 1px solid var(--line);
@@ -432,7 +466,9 @@ button.status { cursor: pointer; }
   padding: 10px;
   cursor: pointer;
 }
-.team.sel { border-color: var(--primary); }
+/* La tarjeta ya no se expande al elegirla: el anillo es lo único que dice
+   cuál está abierta en la ficha de al lado. */
+.team.sel { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(59, 130, 246, .35); }
 .team.done { border-color: rgba(34, 197, 94, .45); }
 .team .row { display: flex; align-items: center; gap: 8px; }
 .team .row .grow {
@@ -659,14 +695,6 @@ button.status { cursor: pointer; }
   cursor: default;
 }
 .detail label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--muted); }
-.detail.sticky {
-  position: sticky;
-  bottom: 0;
-  background: var(--panel);
-  border: 1px solid var(--primary);
-  border-radius: 12px;
-  padding: 12px;
-}
 
 .access-card {
   display: flex;

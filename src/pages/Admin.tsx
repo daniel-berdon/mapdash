@@ -453,6 +453,9 @@ export default function Admin() {
   }))
 
   const point = points.find((p) => p.id === editPoint)
+  const sel = teams.find((t) => t.id === selTeam)
+  const selRoute = routes.find((r) => r.team_id === selTeam)
+  const access = sel ? deviceAccess(sel, now) : null
 
   return (
     <div className="admin">
@@ -491,10 +494,8 @@ export default function Admin() {
               const done = visits.filter((v) => v.team_id === t.id).length
               const total = stops.filter((s) => s.team_id === t.id).length
               const finished = total > 0 && done >= total
-              const route = routes.find((r) => r.team_id === t.id)
               const state =
                 pos?.status === 'en_maps' ? 'warn' : age < STALE_MS ? 'ok' : pos ? 'bad' : 'off'
-              const access = deviceAccess(t, now)
               const dwell = activeDwell(t.id, visits, points, now)
               return (
                 <div
@@ -583,175 +584,6 @@ export default function Admin() {
                     </small>
                   )}
 
-                  {selTeam === t.id && (
-                    <div className="detail" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        value={t.name}
-                        onChange={(e) => editTeamText(t.id, 'name', e.target.value)}
-                        onBlur={(e) => flushTeamText(t.id, 'name', e.target.value)}
-                      />
-                      <input
-                        placeholder="nombre del chofer"
-                        value={t.driver_name ?? ''}
-                        onChange={(e) => editTeamText(t.id, 'driver_name', e.target.value)}
-                        onBlur={(e) => flushTeamText(t.id, 'driver_name', e.target.value)}
-                      />
-                      <input
-                        placeholder="teléfono"
-                        value={t.phone ?? ''}
-                        onChange={(e) => editTeamText(t.id, 'phone', e.target.value)}
-                        onBlur={(e) => flushTeamText(t.id, 'phone', e.target.value)}
-                      />
-                      <label>
-                        Color
-                        <input
-                          type="color"
-                          value={t.color}
-                          onChange={(e) => void patchTeam(t.id, { color: e.target.value })}
-                        />
-                      </label>
-
-                      <section className="access-card">
-                        <div className="access-head">
-                          <span className="access-title">
-                            <Smartphone size={14} /> Acceso del conductor
-                          </span>
-                          <span className={`access-state ${access.state}`}>{access.label}</span>
-                        </div>
-
-                        <div className="access-url">
-                          <code>/d/{t.token}</code>
-                          <button
-                            className={`b-sm b-copy ${copied === t.id ? 'b-ok copied' : 'b-info'}`}
-                            onClick={() => void copyLink(t.id, t.token)}
-                          >
-                            {copied === t.id ? (
-                              <>
-                                <Check size={14} /> ¡Copiado!
-                              </>
-                            ) : (
-                              <>
-                                <Copy size={14} /> Copiar
-                              </>
-                            )}
-                          </button>
-                        </div>
-
-                        {t.device_id && t.device_seen && (
-                          <small>
-                            Último reporte hace {fmtAge(now - new Date(t.device_seen).getTime())}
-                          </small>
-                        )}
-
-                        <div className="access-actions">
-                          <button className="b-ghost b-sm" onClick={() => void regenToken(t.id)}>
-                            <RefreshCw size={14} /> Generar enlace nuevo
-                          </button>
-                          {t.device_id && (
-                            <button className="b-warn b-sm" onClick={() => void freeDevice(t.id)}>
-                              <Unlink size={14} /> Liberar dispositivo
-                            </button>
-                          )}
-                        </div>
-                      </section>
-
-                      <div className="route">
-                        <div className="row">
-                          <b>Ruta</b>
-                          {route?.distance_m != null && (
-                            <small className="muted">
-                              {fmtDist(route.distance_m)} · {fmtDur(route.duration_s ?? 0)}
-                            </small>
-                          )}
-                        </div>
-
-                        <ol>
-                          {teamStops(t.id).map((p, i, arr) => {
-                            const done = visits.some(
-                              (v) => v.team_id === t.id && v.point_id === p.id,
-                            )
-                            return (
-                              <li key={p.id} className={done ? 'done' : ''}>
-                                <span className="n">{i + 1}</span>
-                                <i className="sw" style={{ background: p.color }} />
-                                <span className="nm">{p.name}</span>
-                                <button
-                                  className="b-ghost b-icon"
-                                  title="Subir"
-                                  onClick={() => move(t.id, i, i - 1)}
-                                  disabled={i === 0}
-                                >
-                                  <ArrowUp size={14} />
-                                </button>
-                                <button
-                                  className="b-ghost b-icon"
-                                  title="Bajar"
-                                  onClick={() => move(t.id, i, i + 1)}
-                                  disabled={i === arr.length - 1}
-                                >
-                                  <ArrowDown size={14} />
-                                </button>
-                                <button
-                                  className="b-ghost b-icon"
-                                  title={done ? 'Desmarcar llegada' : 'Marcar llegada'}
-                                  onClick={() => void forceVisit(t.id, p.id, done)}
-                                >
-                                  {done ? <RotateCcw size={14} /> : <Check size={14} />}
-                                </button>
-                                <button
-                                  className="b-ghost b-icon"
-                                  title="Quitar de la ruta"
-                                  onClick={() =>
-                                    void saveRoute(
-                                      t.id,
-                                      arr.filter((x) => x.id !== p.id),
-                                    )
-                                  }
-                                >
-                                  <X size={14} />
-                                </button>
-                              </li>
-                            )
-                          })}
-                        </ol>
-
-                        <select
-                          value=""
-                          onChange={(e) => {
-                            const p = points.find((x) => x.id === e.target.value)
-                            if (p) void saveRoute(t.id, [...teamStops(t.id), p])
-                          }}
-                        >
-                          <option value="">+ agregar parada…</option>
-                          {points
-                            .filter((p) => !teamStops(t.id).some((x) => x.id === p.id))
-                            .map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.name}
-                              </option>
-                            ))}
-                        </select>
-
-                        <div className="row">
-                          <button
-                            className="b-primary b-sm"
-                            onClick={() => void optimize(t.id)}
-                            disabled={busy === t.id}
-                          >
-                            <Sparkles size={14} />
-                            {busy === t.id ? 'Calculando…' : 'Optimizar orden'}
-                          </button>
-                          <button className="b-ghost b-sm" onClick={() => void recalc(t.id)}>
-                            <RefreshCw size={14} /> Recalcular
-                          </button>
-                        </div>
-                      </div>
-
-                      <button className="b-danger" onClick={() => void delTeam(t.id)}>
-                        <Trash2 size={15} /> Quitar equipo
-                      </button>
-                    </div>
-                  )}
                 </div>
               )
             })}
@@ -798,8 +630,214 @@ export default function Admin() {
           </div>
         )}
 
-        {point && tab === 'paradas' && (
-          <div className="detail sticky">
+        </div>
+
+        <EventLog teams={teams} points={points} />
+        <footer className="admin-foot">
+          Desarrollado por{' '}
+          <a href="https://cactusdigital.mx" target="_blank" rel="noreferrer">
+            cactusdigital.mx
+          </a>
+        </footer>
+      </aside>
+
+      {/* Ficha flotante sobre el mapa. Antes el detalle se abría DENTRO de la
+          tarjeta y empujaba fuera de vista al resto de equipos o paradas: para
+          comparar dos había que cerrar uno. Aquí la lista se queda entera y el
+          seleccionado solo se marca con el contorno. */}
+      {tab === 'equipos' && sel && (
+        <div className="sheet">
+          <div className="sheet-head">
+            <VanIcon size={16} color={readable(sel.color)} />
+            <b>{sel.name}</b>
+            <button className="b-ghost b-icon" title="Cerrar" onClick={() => selectTeam(null)}>
+              <X size={16} />
+            </button>
+          </div>
+          <div className="sheet-body detail">
+            <input
+              value={sel.name}
+              onChange={(e) => editTeamText(sel.id, 'name', e.target.value)}
+              onBlur={(e) => flushTeamText(sel.id, 'name', e.target.value)}
+            />
+            <input
+              placeholder="nombre del chofer"
+              value={sel.driver_name ?? ''}
+              onChange={(e) => editTeamText(sel.id, 'driver_name', e.target.value)}
+              onBlur={(e) => flushTeamText(sel.id, 'driver_name', e.target.value)}
+            />
+            <input
+              placeholder="teléfono"
+              value={sel.phone ?? ''}
+              onChange={(e) => editTeamText(sel.id, 'phone', e.target.value)}
+              onBlur={(e) => flushTeamText(sel.id, 'phone', e.target.value)}
+            />
+            <label>
+              Color
+              <input
+                type="color"
+                value={sel.color}
+                onChange={(e) => void patchTeam(sel.id, { color: e.target.value })}
+              />
+            </label>
+
+            <section className="access-card">
+              <div className="access-head">
+                <span className="access-title">
+                  <Smartphone size={14} /> Acceso del conductor
+                </span>
+                {access && (
+                  <span className={`access-state ${access.state}`}>{access.label}</span>
+                )}
+              </div>
+
+              <div className="access-url">
+                <code>/d/{sel.token}</code>
+                <button
+                  className={`b-sm b-copy ${copied === sel.id ? 'b-ok copied' : 'b-info'}`}
+                  onClick={() => void copyLink(sel.id, sel.token)}
+                >
+                  {copied === sel.id ? (
+                    <>
+                      <Check size={14} /> ¡Copiado!
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={14} /> Copiar
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {sel.device_id && sel.device_seen && (
+                <small>
+                  Último reporte hace {fmtAge(now - new Date(sel.device_seen).getTime())}
+                </small>
+              )}
+
+              <div className="access-actions">
+                <button className="b-ghost b-sm" onClick={() => void regenToken(sel.id)}>
+                  <RefreshCw size={14} /> Generar enlace nuevo
+                </button>
+                {sel.device_id && (
+                  <button className="b-warn b-sm" onClick={() => void freeDevice(sel.id)}>
+                    <Unlink size={14} /> Liberar dispositivo
+                  </button>
+                )}
+              </div>
+            </section>
+
+            <div className="route">
+              <div className="row">
+                <b>Ruta</b>
+                {selRoute?.distance_m != null && (
+                  <small className="muted">
+                    {fmtDist(selRoute.distance_m)} · {fmtDur(selRoute.duration_s ?? 0)}
+                  </small>
+                )}
+              </div>
+
+              <ol>
+                {teamStops(sel.id).map((p, i, arr) => {
+                  const done = visits.some(
+                    (v) => v.team_id === sel.id && v.point_id === p.id,
+                  )
+                  return (
+                    <li key={p.id} className={done ? 'done' : ''}>
+                      <span className="n">{i + 1}</span>
+                      <i className="sw" style={{ background: p.color }} />
+                      <span className="nm">{p.name}</span>
+                      <button
+                        className="b-ghost b-icon"
+                        title="Subir"
+                        onClick={() => move(sel.id, i, i - 1)}
+                        disabled={i === 0}
+                      >
+                        <ArrowUp size={14} />
+                      </button>
+                      <button
+                        className="b-ghost b-icon"
+                        title="Bajar"
+                        onClick={() => move(sel.id, i, i + 1)}
+                        disabled={i === arr.length - 1}
+                      >
+                        <ArrowDown size={14} />
+                      </button>
+                      <button
+                        className="b-ghost b-icon"
+                        title={done ? 'Desmarcar llegada' : 'Marcar llegada'}
+                        onClick={() => void forceVisit(sel.id, p.id, done)}
+                      >
+                        {done ? <RotateCcw size={14} /> : <Check size={14} />}
+                      </button>
+                      <button
+                        className="b-ghost b-icon"
+                        title="Quitar de la ruta"
+                        onClick={() =>
+                          void saveRoute(
+                            sel.id,
+                            arr.filter((x) => x.id !== p.id),
+                          )
+                        }
+                      >
+                        <X size={14} />
+                      </button>
+                    </li>
+                  )
+                })}
+              </ol>
+
+              <select
+                value=""
+                onChange={(e) => {
+                  const p = points.find((x) => x.id === e.target.value)
+                  if (p) void saveRoute(sel.id, [...teamStops(sel.id), p])
+                }}
+              >
+                <option value="">+ agregar parada…</option>
+                {points
+                  .filter((p) => !teamStops(sel.id).some((x) => x.id === p.id))
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+              </select>
+
+              <div className="row">
+                <button
+                  className="b-primary b-sm"
+                  onClick={() => void optimize(sel.id)}
+                  disabled={busy === sel.id}
+                >
+                  <Sparkles size={14} />
+                  {busy === sel.id ? 'Calculando…' : 'Optimizar orden'}
+                </button>
+                <button className="b-ghost b-sm" onClick={() => void recalc(sel.id)}>
+                  <RefreshCw size={14} /> Recalcular
+                </button>
+              </div>
+            </div>
+
+            <button className="b-danger" onClick={() => void delTeam(sel.id)}>
+              <Trash2 size={15} /> Quitar equipo
+            </button>
+          </div>
+        </div>
+      )}
+
+      {tab === 'paradas' && point && (
+        <div className="sheet">
+          <div className="sheet-head">
+            <span className="chip" style={{ background: point.color, color: contrastText(point.color) }}>
+              {createElement(stopIcon(point.icon), { size: 14 })}
+            </span>
+            <b>{point.name}</b>
+            <button className="b-ghost b-icon" title="Cerrar" onClick={() => setEditPoint(null)}>
+              <X size={16} />
+            </button>
+          </div>
+          <div className="sheet-body detail">
             <input value={point.name} onChange={(e) => void patchPoint(point.id, { name: e.target.value })} />
             <label>
               Color
@@ -850,17 +888,8 @@ export default function Admin() {
               <Trash2 size={15} /> Borrar parada
             </button>
           </div>
-        )}
         </div>
-
-        <EventLog teams={teams} points={points} />
-        <footer className="admin-foot">
-          Desarrollado por{' '}
-          <a href="https://cactusdigital.mx" target="_blank" rel="noreferrer">
-            cactusdigital.mx
-          </a>
-        </footer>
-      </aside>
+      )}
 
       <div className="map-wrap">
         <Map
