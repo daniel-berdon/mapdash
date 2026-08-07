@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   bufferFix,
+  fmtAge,
   clearBuffer,
   currentStepIndex,
   distM,
@@ -207,5 +208,28 @@ describe('buffer offline', () => {
     bufferFix({ lng: -99.13, lat: 19.43, at: 1 }, s)
     clearBuffer(s)
     expect(readBuffer(s)).toEqual([])
+  })
+})
+
+describe('fmtAge', () => {
+  const min = 60_000
+  it('usa segundos abajo del minuto', () => {
+    expect(fmtAge(12_000)).toBe('12 s')
+  })
+  it('usa minutos abajo de la hora', () => {
+    expect(fmtAge(59 * min)).toBe('59 min')
+  })
+  it('parte en horas y minutos', () => {
+    expect(fmtAge(125 * min)).toBe('2 h 5 min')
+  })
+  it('parte en días y horas', () => {
+    expect(fmtAge(2089 * min)).toBe('1 d 10 h')
+  })
+  it('omite la unidad menor cuando es cero', () => {
+    expect(fmtAge(3 * 60 * min)).toBe('3 h')
+    expect(fmtAge(48 * 60 * min)).toBe('2 d')
+  })
+  it('sin dato conocido no inventa un número', () => {
+    expect(fmtAge(Infinity)).toBe('—')
   })
 })

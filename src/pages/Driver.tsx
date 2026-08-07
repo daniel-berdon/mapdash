@@ -12,6 +12,7 @@ import {
   Radio,
   RefreshCw,
   Smartphone,
+  Timer,
   TriangleAlert,
   Volume2,
   VolumeX,
@@ -23,6 +24,7 @@ import Brand from '../components/Brand'
 import { VanIcon, stopIcon } from '../components/icons'
 import Map, { type MapPoint, type MapRoute } from '../components/Map'
 import { alpha, contrastText, readable } from '../lib/color'
+import { DWELL_ALERTS, dwellAlertDue, dwellLeftMs, fmtCountdown } from '../lib/dwell'
 import {
   currentStepIndex,
   distM,
@@ -179,6 +181,47 @@ export default function Driver() {
   const me: LngLat | null = t.fix ? [t.fix.lng, t.fix.lat] : null
   const pending = useMemo(() => (ctx?.stops ?? []).filter((s) => !s.visited_at), [ctx])
   const next: Stop | undefined = pending[0]
+
+  // --- permanencia en la parada (capa 4) ---
+  // El cronómetro se deriva de la hora de llegada que guardó el servidor, no de
+  // un contador local: recargar la pestaña o perder señal no lo reinician.
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  const dwell = useMemo(() => {
+    let best: { stop: Stop; left: number; at: number } | null = null
+    for (const s of ctx?.stops ?? []) {
+      if (!s.visited_at) continue
+      const left = dwellLeftMs(s.visited_at, s.dwell_min, now)
+      if (!left) continue
+      const at = new Date(s.visited_at).getTime()
+      if (!best || at > best.at) best = { stop: s, left, at }
+    }
+    return best
+  }, [ctx, now])
+
+  // Avisos por voz: faltan 10, faltan 5, y el aviso de que ya puede seguir.
+  const dwellSaid = useRef(new Set<string>())
+  const dwellingAt = useRef<Stop | null>(null)
+  useEffect(() => {
+    const prev = dwellingAt.current
+    dwellingAt.current = dwell?.stop ?? null
+    if (!dwell) {
+      // Se cumplió mientras la pantalla estaba abierta. Tras una recarga con el
+      // tiempo ya vencido, prev es null y no se anuncia nada viejo.
+      if (prev && voice) speak(`Tiempo cumplido en ${prev.name}. Puedes continuar.`)
+      return
+    }
+    for (const mark of DWELL_ALERTS) {
+      const key = `${dwell.stop.id}@${mark}`
+      if (!dwellAlertDue(dwell.left, mark) || dwellSaid.current.has(key)) continue
+      dwellSaid.current.add(key)
+      if (voice) speak(`Quedan ${mark} minutos en ${dwell.stop.name}`)
+    }
+  }, [dwell, voice])
 
   const line = detour?.coordinates ?? ctx?.route?.geometry?.coordinates ?? []
   const steps = detour?.steps ?? ctx?.route?.steps ?? []
@@ -552,6 +595,16 @@ export default function Driver() {
       />
 
       <div className="panel">
+        {dwell && (
+          <div className={`dwell-card ${dwell.left <= 5 * 60_000 ? 'urgent' : ''}`}>
+            <Timer size={20} />
+            <div>
+              <b>{fmtCountdown(dwell.left)}</b>
+              <small>Quédate en {dwell.stop.name}</small>
+            </div>
+          </div>
+        )}
+
         {next ? (
           <>
             <div className="next" onClick={() => setShowList((v) => !v)}>
@@ -579,6 +632,7 @@ export default function Driver() {
                       {createElement(stopIcon(s.icon), { size: 15 })}
                     </span>
                     <span className="nm">{s.name}</span>
+                    {s.dwell_min > 0 && <small className="dwell-tag">{s.dwell_min} min</small>}
                     {s.visited_at && <Check size={15} color="var(--ok-2)" />}
                   </li>
                 ))}

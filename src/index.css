@@ -363,6 +363,35 @@ button.status { cursor: pointer; }
 .stops li .n { width: 20px; color: var(--muted); font-size: 13px; }
 .stops li.done { color: var(--muted); }
 .stops li.done .nm { text-decoration: line-through; }
+.stops li .nm { flex: 1; }
+.stops li .dwell-tag {
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #93c5fd;
+  background: rgba(37, 99, 235, .18);
+}
+
+/* Cuenta regresiva de permanencia. Se pone ámbar en los últimos 5 minutos:
+   el chofer mira el teléfono de reojo y el color le llega antes que el número. */
+.dwell-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(37, 99, 235, .45);
+  border-radius: 12px;
+  background: rgba(37, 99, 235, .14);
+  color: #bfdbfe;
+}
+.dwell-card b { display: block; font-size: 24px; font-variant-numeric: tabular-nums; }
+.dwell-card small { color: var(--muted); }
+.dwell-card.urgent {
+  border-color: rgba(217, 119, 6, .55);
+  background: rgba(217, 119, 6, .16);
+  color: #fcd34d;
+}
 
 .actions { display: flex; gap: 8px; }
 .actions button { flex: 1; }
@@ -578,6 +607,7 @@ button.status { cursor: pointer; }
 .state.bad { color: var(--text); font-weight: 600; }
 .state.bad svg { color: var(--warn-2); }
 .state.hit { color: var(--ok-2); font-weight: 600; }
+.state.dwell { color: #93c5fd; font-weight: 600; font-variant-numeric: tabular-nums; }
 
 .admin-foot {
   flex: none;
@@ -673,6 +703,8 @@ button.status { cursor: pointer; }
 }
 .access-state.free { color: #86efac; background: rgba(22, 163, 74, .18); }
 .access-state.used { color: #fcd34d; background: rgba(217, 119, 6, .18); }
+/* Vinculado pero caducado: otro teléfono ya puede tomarlo. */
+.access-state.stale { color: #cbd5e1; background: rgba(100, 116, 139, .22); }
 .access-url {
   padding: 5px 5px 5px 9px;
   background: var(--bg);

@@ -18,6 +18,7 @@ import {
   Search,
   Sparkles,
   Smartphone,
+  Timer,
   Trash2,
   TriangleAlert,
   Unlink,
@@ -29,7 +30,8 @@ import EventLog from '../components/EventLog'
 import { STOP_ICONS, VanIcon, stopIcon } from '../components/icons'
 import Map, { type MapPoint, type MapVan } from '../components/Map'
 import { contrastText, readable } from '../lib/color'
-import { fmtDist, fmtDur, type LngLat } from '../lib/geo'
+import { dwellLeftMs, fmtCountdown } from '../lib/dwell'
+import { fmtAge, fmtDist, fmtDur, type LngLat } from '../lib/geo'
 import { geocodeOk, searchPlaces, type Place } from '../lib/geocode'
 import { getRoute, optimizeOrder } from '../lib/routing'
 import {
@@ -49,6 +51,12 @@ interface Stop {
 
 /** Sin datos en este tiempo, la van se pinta en gris. */
 const STALE_MS = 30000
+
+/**
+ * Espejo de device_stale_after() en la base (migración 0009). Si allá cambia,
+ * aquí también: es lo único que decide si el panel dice "En uso" o "liberable".
+ */
+const DEVICE_STALE_MS = 5 * 60_000
 
 const COLORS = [
   '#2563eb', '#dc2626', '#16a34a', '#ea580c', '#9333ea',
@@ -77,9 +85,12 @@ export default function Admin() {
   const [now, setNow] = useState(Date.now())
 
   // Reloj propio: la van no manda nada al quedarse sin señal, así que el paso
-  // a gris tiene que venir del tiempo, no de un evento.
+  // a gris tiene que venir del tiempo, no de un evento. Cada segundo, para que
+  // las cuentas regresivas de permanencia no avancen a saltos; el mapa
+  // compara firmas antes de tocar un marcador, así que re-renderizar sale casi
+  // gratis.
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 5000)
+    const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
   }, [])
 
@@ -483,6 +494,8 @@ export default function Admin() {
               const route = routes.find((r) => r.team_id === t.id)
               const state =
                 pos?.status === 'en_maps' ? 'warn' : age < STALE_MS ? 'ok' : pos ? 'bad' : 'off'
+              const access = deviceAccess(t, now)
+              const dwell = activeDwell(t.id, visits, points, now)
               return (
                 <div
                   key={t.id}
@@ -561,6 +574,15 @@ export default function Admin() {
                     )}
                   </small>
 
+                  {/* La permanencia manda sobre el resto: si el equipo está
+                      cumpliendo tiempo en una parada, es lo que el organizador
+                      quiere ver de un vistazo. */}
+                  {dwell && (
+                    <small className="state dwell">
+                      <Timer size={13} /> {fmtCountdown(dwell.left)} en {dwell.point.name}
+                    </small>
+                  )}
+
                   {selTeam === t.id && (
                     <div className="detail" onClick={(e) => e.stopPropagation()}>
                       <input
@@ -594,9 +616,7 @@ export default function Admin() {
                           <span className="access-title">
                             <Smartphone size={14} /> Acceso del conductor
                           </span>
-                          <span className={`access-state ${t.device_id ? 'used' : 'free'}`}>
-                            {t.device_id ? 'En uso' : 'Disponible'}
-                          </span>
+                          <span className={`access-state ${access.state}`}>{access.label}</span>
                         </div>
 
                         <div className="access-url">
@@ -813,6 +833,19 @@ export default function Admin() {
                 onChange={(e) => void patchPoint(point.id, { radius_m: +e.target.value })}
               />
             </label>
+            <label>
+              Tiempo de visita: {point.dwell_min ? `${point.dwell_min} min` : 'sin mínimo'}
+              <input
+                type="range"
+                min={0}
+                max={120}
+                step={5}
+                // ?? 0: mientras la migración 0010 no esté aplicada la columna
+                // no llega y el input se volvería no controlado.
+                value={point.dwell_min ?? 0}
+                onChange={(e) => void patchPoint(point.id, { dwell_min: +e.target.value })}
+              />
+            </label>
             <button className="b-danger" onClick={() => void delPoint(point.id)}>
               <Trash2 size={15} /> Borrar parada
             </button>
@@ -978,9 +1011,33 @@ function routeError(e: unknown, list: Point[]): string {
   return `No se pudo calcular la ruta.\n\n${msg}`
 }
 
-function fmtAge(ms: number): string {
-  if (!Number.isFinite(ms)) return '—'
-  const s = Math.round(ms / 1000)
-  if (s < 60) return `${s} s`
-  return `${Math.round(s / 60)} min`
+/**
+ * Permanencia en curso de un equipo: la llegada más reciente cuya parada
+ * todavía le exige quedarse. Null si no está cumpliendo tiempo en ninguna.
+ */
+function activeDwell(teamId: string, visits: Visit[], points: Point[], now: number) {
+  let best: { point: Point; left: number; at: number } | null = null
+  for (const v of visits) {
+    if (v.team_id !== teamId) continue
+    const point = points.find((p) => p.id === v.point_id)
+    if (!point) continue
+    const left = dwellLeftMs(v.arrived_at, point.dwell_min, now)
+    if (!left) continue
+    const at = new Date(v.arrived_at).getTime()
+    if (!best || at > best.at) best = { point, left, at }
+  }
+  return best
+}
+
+/**
+ * Estado del vínculo con el teléfono, con la MISMA regla que la base:
+ * pasado device_stale_after() cualquier otro dispositivo puede reclamar el
+ * equipo, así que el panel no puede seguir diciendo "En uso" a secas mientras
+ * el selector de choferes ya lo ofrece como libre.
+ */
+function deviceAccess(t: Team, now: number) {
+  if (!t.device_id) return { state: 'free', label: 'Disponible' }
+  const idle = now - new Date(t.device_seen ?? 0).getTime()
+  if (idle > DEVICE_STALE_MS) return { state: 'stale', label: 'En uso (liberable)' }
+  return { state: 'used', label: 'En uso' }
 }

@@ -190,3 +190,20 @@ export function fmtDur(s: number): string {
   if (min < 60) return `${min} min`
   return `${Math.floor(min / 60)} h ${min % 60} min`
 }
+
+/**
+ * Antigüedad de un dato, en la unidad que toque. Un equipo que no reporta
+ * desde ayer decía "2089 min": ilegible. Se omite la unidad menor cuando es
+ * cero, para no leer "2 d 0 h".
+ */
+export function fmtAge(ms: number): string {
+  if (!Number.isFinite(ms)) return '—'
+  const s = Math.round(ms / 1000)
+  if (s < 60) return `${s} s`
+  const min = Math.floor(s / 60)
+  if (min < 60) return `${min} min`
+  const h = Math.floor(min / 60)
+  if (h < 24) return min % 60 ? `${h} h ${min % 60} min` : `${h} h`
+  const d = Math.floor(h / 24)
+  return h % 24 ? `${d} d ${h % 24} h` : `${d} d`
+}

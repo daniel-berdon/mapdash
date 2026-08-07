@@ -22,7 +22,10 @@ export interface Point {
   lng: number
   color: string
   icon: string
+  /** Radio del geofence: dentro de él la llegada se registra sola. */
   radius_m: number
+  /** Minutos que el equipo debe permanecer en la parada. 0 = de paso. */
+  dwell_min: number
 }
 
 export interface Team {

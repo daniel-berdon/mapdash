@@ -40,13 +40,14 @@ cubre los tres en una sola pantalla y con un link por chofer.
 ### Paradas
 
 - **Crear con un clic en el mapa**, o arrastrar el marcador para reubicarla.
-- Cada parada tiene **nombre, color, icono** (de un catálogo) y **radio de llegada** ajustable de 10 a 300 m.
+- Cada parada tiene **nombre, color, icono** (de un catálogo), **radio de llegada** ajustable de 10 a 300 m y **tiempo de visita** de 0 a 120 min.
+- El tiempo de visita arranca al entrar al radio: el chofer ve la cuenta regresiva y se le avisa por voz a los 10 y 5 minutos. `0` = parada de paso.
 - Mover o borrar una parada **recalcula sola** toda ruta que pasaba por ella.
 - Si una parada cae donde no hay calle, el error dice **cuál es** por su nombre, no coordenadas crudas.
 
 ### Equipos y rutas
 
-- Alta de equipos con color propio, nombre del chofer y teléfono. Los campos se **guardan solos** al dejar de teclear.
+- Alta de equipos con **color editable** (se asigna uno al crearlos), nombre del chofer y teléfono. Los campos se **guardan solos** al dejar de teclear.
 - Ruta por arrastre de paradas: agregar, quitar, reordenar con ▲▼.
 - **Optimizar orden** resuelve el TSP con el motor VROOM de OpenRouteService, respetando la primera parada como salida fija.
 - Cada ruta guarda su **trazo por calles, sus maniobras, distancia y duración**.
