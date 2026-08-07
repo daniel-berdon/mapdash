@@ -580,6 +580,14 @@ export default function Admin() {
                         onChange={(e) => editTeamText(t.id, 'phone', e.target.value)}
                         onBlur={(e) => flushTeamText(t.id, 'phone', e.target.value)}
                       />
+                      <label>
+                        Color
+                        <input
+                          type="color"
+                          value={t.color}
+                          onChange={(e) => void patchTeam(t.id, { color: e.target.value })}
+                        />
+                      </label>
 
                       <section className="access-card">
                         <div className="access-head">
