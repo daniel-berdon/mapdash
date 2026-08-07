@@ -634,19 +634,21 @@ export default function Driver() {
 }
 
 function StatusBar({ t }: { t: ReturnType<typeof useTracking> }) {
+  // Las dos barras rojas son botones: tocarlas vuelve a pedir el permiso y
+  // reengancha el GPS, que es lo primero que intenta cualquiera al verlas.
   if (t.error === 'permiso') {
     return (
-      <div className="status bad">
+      <button className="status bad" onClick={() => void t.retry()}>
         <TriangleAlert size={16} />
-        Sin permiso de ubicación. Actívalo en los ajustes del navegador y recarga.
-      </div>
+        Sin permiso de ubicación. Toca aquí para volver a pedirlo.
+      </button>
     )
   }
   if (!t.tracking) {
     return (
-      <div className="status bad">
-        <Power size={16} /> Detenido — no se comparte tu ubicación
-      </div>
+      <button className="status bad" onClick={() => void t.retry()}>
+        <Power size={16} /> Detenido — toca para volver a compartir tu ubicación
+      </button>
     )
   }
   if (!t.online) {

@@ -159,6 +159,20 @@ export function useTracking(token: string) {
     setState((s) => ({ ...s, tracking: true }))
   }, [acquireLock, send])
 
+  /**
+   * Reintento manual desde la barra roja. Tira el watch actual antes de volver
+   * a arrancar: tras un error el watch sigue registrado y `start` se cortaría
+   * solo, así que sin esto el toque no haría nada. Si el permiso está denegado
+   * a nivel de sitio el navegador no vuelve a preguntar y el error reaparece;
+   * ahí no hay nada que la página pueda hacer salvo mandar a los ajustes.
+   */
+  const retry = useCallback(async () => {
+    if (watchId.current != null) navigator.geolocation.clearWatch(watchId.current)
+    watchId.current = null
+    setState((s) => ({ ...s, error: null }))
+    await start()
+  }, [start])
+
   // Además de las lecturas del GPS, mantiene vivo el vínculo cada 5 s. Esto
   // permite detectar una liberación del admin aunque el teléfono esté quieto y
   // watchPosition no produzca una lectura nueva.
@@ -243,5 +257,5 @@ export function useTracking(token: string) {
     setState((s) => ({ ...s, inUse: false, released: false }))
   }, [])
 
-  return { ...state, start, stop, goToMaps, resetAccess }
+  return { ...state, start, stop, retry, goToMaps, resetAccess }
 }

@@ -308,9 +308,16 @@ code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
   justify-content: center;
   gap: 8px;
   padding: 10px 14px;
+  font: inherit;
   font-weight: 600;
   text-align: center;
+  /* Las barras rojas son <button>: sin esto heredan el borde y el ancho del
+     navegador y dejan de verse como la misma franja que las demás. */
+  width: 100%;
+  border: 0;
+  border-radius: 0;
 }
+button.status { cursor: pointer; }
 .status.ok   { background: #14532d; color: #bbf7d0; }
 .status.warn { background: #78350f; color: #fde68a; }
 .status.bad  { background: #7f1d1d; color: #fecaca; }
