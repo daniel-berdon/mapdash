@@ -306,9 +306,10 @@ code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 10px 14px;
+  gap: 7px;
+  padding: 5px 12px;
   font: inherit;
+  font-size: 13px;
   font-weight: 600;
   text-align: center;
   /* Las barras rojas son <button>: sin esto heredan el borde y el ancho del
@@ -363,6 +364,8 @@ button.status { cursor: pointer; }
 .stops li .n { width: 20px; color: var(--muted); font-size: 13px; }
 .stops li.done { color: var(--muted); }
 .stops li.done .nm { text-decoration: line-through; }
+.stops li.lunch-row { color: var(--warn-2); }
+.stops li.lunch-row .dwell-tag { color: var(--warn-2); background: rgba(217, 119, 6, .18); }
 .stops li .nm { flex: 1; }
 .stops li .dwell-tag {
   padding: 1px 6px;
@@ -373,29 +376,60 @@ button.status { cursor: pointer; }
   background: rgba(37, 99, 235, .18);
 }
 
-/* Cuenta regresiva de permanencia. Se pone ámbar en los últimos 5 minutos:
-   el chofer mira el teléfono de reojo y el color le llega antes que el número. */
-.dwell-card {
+/* Cuenta regresiva de permanencia: pastilla flotante sobre el mapa. Ocupar
+   una fila del panel le quitaba al chofer calle visible, que es lo único que
+   de verdad necesita ver mientras conduce. */
+.map-area { position: relative; min-height: 0; }
+.dwell-pill {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 10px;
+  max-width: calc(100% - 20px);
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid rgba(37, 99, 235, .45);
-  border-radius: 12px;
-  background: rgba(37, 99, 235, .14);
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  white-space: nowrap;
   color: #bfdbfe;
+  background: rgba(24, 24, 27, .92);
+  border: 1px solid rgba(37, 99, 235, .5);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .45);
+  backdrop-filter: blur(4px);
 }
-.dwell-card b { display: block; font-size: 24px; font-variant-numeric: tabular-nums; }
-.dwell-card small { color: var(--muted); }
-.dwell-card.urgent {
-  border-color: rgba(217, 119, 6, .55);
-  background: rgba(217, 119, 6, .16);
-  color: #fcd34d;
+/* Interruptor de voz: flota en la esquina del mapa en vez de robarle ancho a
+   Centrar y Google Maps, que sí se tocan en cada parada. */
+.map-fab {
+  position: absolute;
+  z-index: 3;
+  top: 10px;
+  left: 10px;
+  padding: 9px;
+  border-radius: 10px;
+  background: rgba(24, 24, 27, .92);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  backdrop-filter: blur(4px);
 }
+.map-fab.on { color: #fff; border-color: var(--primary); background: rgba(37, 99, 235, .9); }
+
+.dwell-pill b { font-size: 16px; font-variant-numeric: tabular-nums; }
+.dwell-pill span { overflow: hidden; text-overflow: ellipsis; }
+.dwell-pill em { font-style: normal; font-weight: 600; }
+/* Mismos cortes que los avisos por voz: 10 min naranja, 5 min rojo. */
+.dwell-pill.orange { color: var(--warn-2); border-color: rgba(245, 158, 11, .6); }
+.dwell-pill.red { color: var(--bad-2); border-color: rgba(239, 68, 68, .65); }
+/* El lunch no urge como una parada: arranca ámbar y solo se pone rojo al final. */
+.dwell-pill.lunch { color: var(--warn-2); border-color: rgba(245, 158, 11, .6); }
 
 .actions { display: flex; gap: 8px; }
 .actions button { flex: 1; }
 .actions button.b-icon { flex: 0 0 46px; }
+/* Lunch ocupa un tercio; Terminar se queda con lo que sobra. */
+.actions button.b-third { flex: 0 0 calc(33.333% - 6px); }
 
 /* ---------------------------------------------------------------- admin --- */
 .admin { display: grid; grid-template-columns: 384px 1fr; height: 100%; position: relative; }
@@ -428,6 +462,7 @@ button.status { cursor: pointer; }
 .sheet-body { overflow-y: auto; }
 /* El detalle ya no cuelga de una tarjeta: dentro de la ficha sobra el filete. */
 .sheet-body.detail { margin: 0; padding: 12px; border-top: 0; }
+.lunch-cfg { margin-top: 8px; }
 
 /* En pantallas angostas no cabe al lado: se apoya en el borde de la barra. */
 @media (max-width: 1100px) {
@@ -644,6 +679,8 @@ button.status { cursor: pointer; }
 .state.bad svg { color: var(--warn-2); }
 .state.hit { color: var(--ok-2); font-weight: 600; }
 .state.dwell { color: #93c5fd; font-weight: 600; font-variant-numeric: tabular-nums; }
+.state.ruta { color: var(--muted); }
+.state.lunch { color: var(--warn-2); font-weight: 600; font-variant-numeric: tabular-nums; }
 
 .admin-foot {
   flex: none;
@@ -774,6 +811,10 @@ button.status { cursor: pointer; }
 .route li .n { width: 18px; color: var(--muted); font-size: 12px; }
 .route li.done .nm { text-decoration: line-through; color: var(--muted); }
 .route .sw { width: 10px; height: 10px; flex: none; border-radius: 50%; }
+/* Sin esto "Ruta" quedaba pegado a la distancia: "Ruta2.3 km · 32 min". */
+.route .row { display: flex; align-items: center; gap: 8px; }
+.route li.lunch-row { color: var(--warn-2); }
+.route li.lunch-row svg { flex: none; }
 
 @media (max-width: 720px) {
   .admin { grid-template-columns: 1fr; grid-template-rows: 45vh 55vh; }

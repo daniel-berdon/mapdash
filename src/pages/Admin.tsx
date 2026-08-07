@@ -15,6 +15,7 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  Sandwich,
   Search,
   Sparkles,
   Smartphone,
@@ -24,13 +25,13 @@ import {
   Unlink,
   X,
 } from 'lucide-react'
-import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Brand from '../components/Brand'
 import EventLog from '../components/EventLog'
 import { STOP_ICONS, VanIcon, stopIcon } from '../components/icons'
 import Map, { type MapPoint, type MapVan } from '../components/Map'
 import { contrastText, readable } from '../lib/color'
-import { dwellLeftMs, fmtCountdown } from '../lib/dwell'
+import { dwellLeftMs, fmtCountdown, lunchStatus } from '../lib/dwell'
 import { fmtAge, fmtDist, fmtDur, type LngLat } from '../lib/geo'
 import { geocodeOk, searchPlaces, type Place } from '../lib/geocode'
 import { getRoute, optimizeOrder } from '../lib/routing'
@@ -40,6 +41,7 @@ import {
   type Position,
   type RouteRow,
   type Team,
+  type AppSettings,
   type Visit,
 } from '../lib/supabase'
 
@@ -70,6 +72,7 @@ export default function Admin() {
   const [routes, setRoutes] = useState<RouteRow[]>([])
   const [positions, setPositions] = useState<Record<string, Position>>({})
   const [visits, setVisits] = useState<Visit[]>([])
+  const [settings, setSettings] = useState<AppSettings | null>(null)
 
   const [tab, setTab] = useState<'equipos' | 'paradas'>('equipos')
   const [selTeam, setSelTeam] = useState<string | null>(null)
@@ -95,13 +98,14 @@ export default function Admin() {
   }, [])
 
   const loadAll = useCallback(async () => {
-    const [p, t, s, r, pos, v] = await Promise.all([
+    const [p, t, s, r, pos, v, cfg] = await Promise.all([
       supabase.from('points').select('*').order('created_at'),
       supabase.from('teams').select('*').order('created_at'),
       supabase.from('route_stops').select('*').order('seq'),
       supabase.from('routes').select('*'),
       supabase.from('positions').select('*'),
       supabase.from('visits').select('*'),
+      supabase.from('app_settings').select('*').maybeSingle(),
     ])
     if (p.data) setPoints(p.data)
     if (t.data) setTeams(t.data)
@@ -109,6 +113,7 @@ export default function Admin() {
     if (r.data) setRoutes(r.data)
     if (pos.data) setPositions(Object.fromEntries(pos.data.map((x) => [x.team_id, x])))
     if (v.data) setVisits(v.data)
+    if (cfg.data) setSettings(cfg.data)
   }, [])
 
   useEffect(() => {
@@ -123,7 +128,14 @@ export default function Admin() {
           setTeams((prev) =>
             prev.map((team) =>
               team.id === row.id
-                ? { ...team, device_id: row.device_id, device_seen: row.device_seen }
+                ? {
+                    ...team,
+                    device_id: row.device_id,
+                    device_seen: row.device_seen,
+                    lunch_after_seq: row.lunch_after_seq,
+                    lunch_started_at: row.lunch_started_at,
+                    lunch_ended_at: row.lunch_ended_at,
+                  }
                 : team,
             ),
           )
@@ -188,6 +200,12 @@ export default function Admin() {
       setTeams((t) => [...t, data])
       setSelTeam(data.id)
     }
+  }
+
+  /** La duración del lunch es global: una fila, un valor para todos. */
+  const patchSettings = async (patch: Partial<AppSettings>) => {
+    setSettings((prev) => (prev ? { ...prev, ...patch } : prev))
+    await supabase.from('app_settings').update(patch).eq('id', true)
   }
 
   const patchTeam = async (id: string, patch: Partial<Team>) => {
@@ -264,9 +282,23 @@ export default function Admin() {
   }
 
   /** Suelta el enlace para que otro teléfono pueda tomarlo. */
+  /**
+   * Liberar el enlace deja al equipo como recién creado: sin teléfono y sin
+   * ubicación. Conservar la última posición dejaba una van fantasma clavada en
+   * el mapa que ya no correspondía a nadie.
+   */
   const freeDevice = async (id: string) => {
     if (!confirm('¿Liberar el enlace? El teléfono que lo tenga dejará de reportar.')) return
     await patchTeam(id, { device_id: null, device_seen: null })
+    await supabase.from('positions').delete().eq('team_id', id)
+    setPositions((prev) => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
+    // Sin van que encuadrar, el mapa vuelve a la ruta del equipo.
+    const coords = teamStops(id).map((p) => [p.lng, p.lat] as LngLat)
+    setFocus(coords.length ? { key: `free:${id}:${Date.now()}`, coords } : null)
   }
 
   const regenToken = async (id: string) => {
@@ -300,10 +332,31 @@ export default function Admin() {
         .from('route_stops')
         .insert(ordered.map((p, i) => ({ team_id: teamId, point_id: p.id, seq: i + 1 })))
     }
+    // Quitar paradas puede dejar el lunch apuntando a una posición que ya no
+    // existe, y ahí no volvería a dispararse solo. Se recorta al nuevo final.
+    const team = teams.find((t) => t.id === teamId)
+    if (team?.lunch_after_seq != null && team.lunch_after_seq > ordered.length) {
+      await patchTeam(teamId, { lunch_after_seq: ordered.length || null })
+    }
+
     await recalc(teamId, ordered)
   }
 
   const resequence = (teamId: string) => saveRoute(teamId, teamStops(teamId))
+
+  /**
+   * Mueve el lunch dentro de la ruta. Queda siempre después de alguna parada:
+   * es lo que le da su disparador automático, así que el rango es 1..n.
+   */
+  const moveLunch = (team: Team, delta: number) => {
+    const total = teamStops(team.id).length
+    const next = Math.min(total, Math.max(1, (team.lunch_after_seq ?? total) + delta))
+    return patchTeam(team.id, { lunch_after_seq: next })
+  }
+
+  /** Devuelve el lunch a "sin usar", como desmarcar una llegada. */
+  const resetLunch = (teamId: string) =>
+    patchTeam(teamId, { lunch_started_at: null, lunch_ended_at: null })
 
   const recalc = async (teamId: string, ordered?: Point[]) => {
     const list = ordered ?? teamStops(teamId)
@@ -366,10 +419,11 @@ export default function Admin() {
       await supabase.from('visits').delete().eq('team_id', teamId).eq('point_id', pointId)
       setVisits((v) => v.filter((x) => !(x.team_id === teamId && x.point_id === pointId)))
     } else {
-      const row = {
+      const row: Visit = {
         team_id: teamId,
         point_id: pointId,
         arrived_at: new Date().toISOString(),
+        left_at: null,
         source: 'admin' as const,
       }
       await supabase.from('visits').insert(row)
@@ -456,6 +510,12 @@ export default function Admin() {
   const sel = teams.find((t) => t.id === selTeam)
   const selRoute = routes.find((r) => r.team_id === selTeam)
   const access = sel ? deviceAccess(sel, now) : null
+  const lunch = lunchStatus(
+    sel?.lunch_started_at ?? null,
+    sel?.lunch_ended_at ?? null,
+    settings?.lunch_min ?? 45,
+    now,
+  )
 
   return (
     <div className="admin">
@@ -497,6 +557,12 @@ export default function Admin() {
               const state =
                 pos?.status === 'en_maps' ? 'warn' : age < STALE_MS ? 'ok' : pos ? 'bad' : 'off'
               const dwell = activeDwell(t.id, visits, points, now)
+              const lunch = lunchStatus(
+                t.lunch_started_at,
+                t.lunch_ended_at,
+                settings?.lunch_min ?? 45,
+                now,
+              )
               return (
                 <div
                   key={t.id}
@@ -575,13 +641,24 @@ export default function Admin() {
                     )}
                   </small>
 
-                  {/* La permanencia manda sobre el resto: si el equipo está
-                      cumpliendo tiempo en una parada, es lo que el organizador
-                      quiere ver de un vistazo. */}
-                  {dwell && (
+                  {/* Misma línea siempre, para que la tarjeta no cambie de alto:
+                      o el equipo está cumpliendo tiempo en una parada, o va en
+                      camino a la siguiente. Solo se calla si nunca arrancó. */}
+                  {lunch.phase === 'activo' ? (
+                    <small className="state lunch">
+                      <Sandwich size={13} /> Lunch break · {fmtCountdown(lunch.left)}
+                    </small>
+                  ) : dwell ? (
                     <small className="state dwell">
                       <Timer size={13} /> {fmtCountdown(dwell.left)} en {dwell.point.name}
                     </small>
+                  ) : (
+                    pos &&
+                    !finished && (
+                      <small className="state ruta">
+                        <Navigation size={13} /> En ruta
+                      </small>
+                    )
                   )}
 
                 </div>
@@ -743,46 +820,92 @@ export default function Admin() {
                     (v) => v.team_id === sel.id && v.point_id === p.id,
                   )
                   return (
-                    <li key={p.id} className={done ? 'done' : ''}>
-                      <span className="n">{i + 1}</span>
-                      <i className="sw" style={{ background: p.color }} />
-                      <span className="nm">{p.name}</span>
-                      <button
-                        className="b-ghost b-icon"
-                        title="Subir"
-                        onClick={() => move(sel.id, i, i - 1)}
-                        disabled={i === 0}
-                      >
-                        <ArrowUp size={14} />
-                      </button>
-                      <button
-                        className="b-ghost b-icon"
-                        title="Bajar"
-                        onClick={() => move(sel.id, i, i + 1)}
-                        disabled={i === arr.length - 1}
-                      >
-                        <ArrowDown size={14} />
-                      </button>
-                      <button
-                        className="b-ghost b-icon"
-                        title={done ? 'Desmarcar llegada' : 'Marcar llegada'}
-                        onClick={() => void forceVisit(sel.id, p.id, done)}
-                      >
-                        {done ? <RotateCcw size={14} /> : <Check size={14} />}
-                      </button>
-                      <button
-                        className="b-ghost b-icon"
-                        title="Quitar de la ruta"
-                        onClick={() =>
-                          void saveRoute(
-                            sel.id,
-                            arr.filter((x) => x.id !== p.id),
-                          )
-                        }
-                      >
-                        <X size={14} />
-                      </button>
-                    </li>
+                    // Fragment: el lunch se intercala entre paradas sin ser una.
+                    <Fragment key={p.id}>
+                      <li className={done ? 'done' : ''}>
+                        <span className="n">{i + 1}</span>
+                        <i className="sw" style={{ background: p.color }} />
+                        <span className="nm">{p.name}</span>
+                        <button
+                          className="b-ghost b-icon"
+                          title="Subir"
+                          onClick={() => move(sel.id, i, i - 1)}
+                          disabled={i === 0}
+                        >
+                          <ArrowUp size={14} />
+                        </button>
+                        <button
+                          className="b-ghost b-icon"
+                          title="Bajar"
+                          onClick={() => move(sel.id, i, i + 1)}
+                          disabled={i === arr.length - 1}
+                        >
+                          <ArrowDown size={14} />
+                        </button>
+                        <button
+                          className="b-ghost b-icon"
+                          title={done ? 'Desmarcar llegada' : 'Marcar llegada'}
+                          onClick={() => void forceVisit(sel.id, p.id, done)}
+                        >
+                          {done ? <RotateCcw size={14} /> : <Check size={14} />}
+                        </button>
+                        <button
+                          className="b-ghost b-icon"
+                          title="Quitar de la ruta"
+                          onClick={() =>
+                            void saveRoute(
+                              sel.id,
+                              arr.filter((x) => x.id !== p.id),
+                            )
+                          }
+                        >
+                          <X size={14} />
+                        </button>
+                      </li>
+
+                      {sel.lunch_after_seq === i + 1 && (
+                        <li className={`lunch-row ${lunch.phase === 'terminado' ? 'done' : ''}`}>
+                          <span className="n" />
+                          <Sandwich size={14} />
+                          <span className="nm">
+                            Lunch break
+                            {lunch.phase === 'activo' && ` · ${fmtCountdown(lunch.left)}`}
+                            {lunch.phase === 'terminado' && ' · usado'}
+                          </span>
+                          <button
+                            className="b-ghost b-icon"
+                            title="Subir"
+                            onClick={() => void moveLunch(sel, -1)}
+                            disabled={i === 0}
+                          >
+                            <ArrowUp size={14} />
+                          </button>
+                          <button
+                            className="b-ghost b-icon"
+                            title="Bajar"
+                            onClick={() => void moveLunch(sel, 1)}
+                            disabled={i === arr.length - 1}
+                          >
+                            <ArrowDown size={14} />
+                          </button>
+                          <button
+                            className="b-ghost b-icon"
+                            title="Volver a dejarlo disponible"
+                            disabled={lunch.phase === 'none'}
+                            onClick={() => void resetLunch(sel.id)}
+                          >
+                            <RotateCcw size={14} />
+                          </button>
+                          <button
+                            className="b-ghost b-icon"
+                            title="Quitar de la ruta"
+                            onClick={() => void patchTeam(sel.id, { lunch_after_seq: null })}
+                          >
+                            <X size={14} />
+                          </button>
+                        </li>
+                      )}
+                    </Fragment>
                   )
                 })}
               </ol>
@@ -790,11 +913,19 @@ export default function Admin() {
               <select
                 value=""
                 onChange={(e) => {
+                  if (e.target.value === 'lunch') {
+                    // Entra al final; desde ahí se mueve con las flechas.
+                    void patchTeam(sel.id, { lunch_after_seq: teamStops(sel.id).length })
+                    return
+                  }
                   const p = points.find((x) => x.id === e.target.value)
                   if (p) void saveRoute(sel.id, [...teamStops(sel.id), p])
                 }}
               >
-                <option value="">+ agregar parada…</option>
+                <option value="">+ agregar a la ruta…</option>
+                {sel.lunch_after_seq == null && teamStops(sel.id).length > 0 && (
+                  <option value="lunch">Lunch break</option>
+                )}
                 {points
                   .filter((p) => !teamStops(sel.id).some((x) => x.id === p.id))
                   .map((p) => (
@@ -803,6 +934,21 @@ export default function Admin() {
                     </option>
                   ))}
               </select>
+
+              {sel.lunch_after_seq != null && (
+                <label className="lunch-cfg">
+                  Duración del lunch: {settings?.lunch_min ?? 45} min{' '}
+                  <small className="muted">(igual para todos los equipos)</small>
+                  <input
+                    type="range"
+                    min={5}
+                    max={120}
+                    step={5}
+                    value={settings?.lunch_min ?? 45}
+                    onChange={(e) => void patchSettings({ lunch_min: +e.target.value })}
+                  />
+                </label>
+              )}
 
               <div className="row">
                 <button
@@ -1047,7 +1193,8 @@ function routeError(e: unknown, list: Point[]): string {
 function activeDwell(teamId: string, visits: Visit[], points: Point[], now: number) {
   let best: { point: Point; left: number; at: number } | null = null
   for (const v of visits) {
-    if (v.team_id !== teamId) continue
+    // left_at: el chofer cerró la actividad antes de tiempo.
+    if (v.team_id !== teamId || v.left_at) continue
     const point = points.find((p) => p.id === v.point_id)
     if (!point) continue
     const left = dwellLeftMs(v.arrived_at, point.dwell_min, now)

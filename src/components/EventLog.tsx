@@ -4,7 +4,11 @@ import {
   Play,
   Power,
   RotateCcw,
+  Sandwich,
+  Smartphone,
+  Timer,
   Trophy,
+  Unlink,
   Wifi,
   WifiOff,
   type LucideIcon,
@@ -21,10 +25,15 @@ const KINDS: Record<EventKind, { Icon: LucideIcon; text: string; cls: string }> 
   regreso: { Icon: RotateCcw, text: 'volvió a la app', cls: 'ok' },
   reconexion: { Icon: Wifi, text: 'recuperó la conexión', cls: 'ok' },
   llegada: { Icon: Flag, text: 'llegó a', cls: 'hit' },
+  estancia: { Icon: Timer, text: 'terminó su tiempo en', cls: 'hit' },
+  lunch: { Icon: Sandwich, text: 'entró a lunch break', cls: 'warn' },
+  lunch_fin: { Icon: Sandwich, text: 'volvió del lunch break', cls: 'ok' },
   completada: { Icon: Trophy, text: 'completó su ruta', cls: 'complete' },
   maps: { Icon: Navigation, text: 'salió a Google Maps', cls: 'warn' },
   senal: { Icon: WifiOff, text: 'estuvo sin reportar', cls: 'bad' },
   pausa: { Icon: Power, text: 'dejó de compartir ubicación', cls: 'bad' },
+  liberado: { Icon: Unlink, text: 'fue liberado por el admin', cls: 'warn' },
+  dispositivo: { Icon: Smartphone, text: 'cambió de teléfono', cls: 'warn' },
 }
 
 export default function EventLog({ teams, points }: { teams: Team[]; points: Point[] }) {

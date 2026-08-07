@@ -11,6 +11,7 @@ import {
   Power,
   Radio,
   RefreshCw,
+  Sandwich,
   Smartphone,
   Timer,
   TriangleAlert,
@@ -18,13 +19,20 @@ import {
   VolumeX,
   WifiOff,
 } from 'lucide-react'
-import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Brand from '../components/Brand'
 import { VanIcon, stopIcon } from '../components/icons'
 import Map, { type MapPoint, type MapRoute } from '../components/Map'
 import { alpha, contrastText, readable } from '../lib/color'
-import { DWELL_ALERTS, dwellAlertDue, dwellLeftMs, fmtCountdown } from '../lib/dwell'
+import {
+  DWELL_ALERTS,
+  dwellAlertDue,
+  dwellLeftMs,
+  dwellLevel,
+  fmtCountdown,
+  lunchStatus,
+} from '../lib/dwell'
 import {
   currentStepIndex,
   distM,
@@ -39,10 +47,12 @@ import {
 import { getRoute } from '../lib/routing'
 import {
   claimTeam,
+  finishDwell,
   getDriverContext,
   listTeams,
   manualCheckin,
   registerTrackingStart,
+  setLunch,
   type DriverContext,
   type Stop,
   type TeamChoice,
@@ -194,7 +204,8 @@ export default function Driver() {
   const dwell = useMemo(() => {
     let best: { stop: Stop; left: number; at: number } | null = null
     for (const s of ctx?.stops ?? []) {
-      if (!s.visited_at) continue
+      // left_at = el chofer ya cerró la actividad; el reloj no vuelve a correr.
+      if (!s.visited_at || s.left_at) continue
       const left = dwellLeftMs(s.visited_at, s.dwell_min, now)
       if (!left) continue
       const at = new Date(s.visited_at).getTime()
@@ -202,6 +213,14 @@ export default function Driver() {
     }
     return best
   }, [ctx, now])
+
+  // El lunch pausa la ruta: no es una parada, no tiene lugar ni geofence.
+  const lunch = lunchStatus(
+    ctx?.team.lunch_started_at ?? null,
+    ctx?.team.lunch_ended_at ?? null,
+    ctx?.lunch_min ?? 45,
+    now,
+  )
 
   // Avisos por voz: faltan 10, faltan 5, y el aviso de que ya puede seguir.
   const dwellSaid = useRef(new Set<string>())
@@ -349,6 +368,52 @@ export default function Driver() {
       await load()
     } catch {
       alert('No se pudo registrar la parada. Revisa la conexión e intenta de nuevo.')
+    } finally {
+      setCheckingIn(false)
+    }
+  }
+
+  /**
+   * Cerrar la actividad antes de que se agote el tiempo. Se guarda en el
+   * servidor (left_at); si solo se apagara en pantalla, el cronómetro volvería
+   * con la siguiente recarga.
+   */
+  const handleFinishDwell = async () => {
+    if (!dwell || checkingIn) return
+    const ok = confirm(
+      `¿Ya terminaron la actividad en ${dwell.stop.name}?\n\n` +
+        `Quedan ${fmtCountdown(dwell.left)}. Al continuar se cierra el tiempo de ` +
+        `esta parada y sigues con la ruta.`,
+    )
+    if (!ok) return
+    setCheckingIn(true)
+    try {
+      await finishDwell(token, dwell.stop.id, deviceId())
+      await load()
+    } catch {
+      alert('No se pudo cerrar el tiempo de la parada. Revisa la conexión e intenta de nuevo.')
+    } finally {
+      setCheckingIn(false)
+    }
+  }
+
+  /** Botón de lunch break: arrancarlo antes de tiempo o darlo por terminado. */
+  const handleLunch = async (start: boolean) => {
+    if (checkingIn) return
+    const min = ctx?.lunch_min ?? 45
+    const ok = confirm(
+      start
+        ? `¿Iniciar el lunch break?\n\nSon ${min} minutos y la ruta queda en pausa mientras tanto.`
+        : `¿Terminar el lunch break y seguir con la ruta?`,
+    )
+    if (!ok) return
+    setCheckingIn(true)
+    try {
+      await setLunch(token, deviceId(), start)
+      await load()
+      if (voice) speak(start ? 'Lunch break iniciado' : 'Lunch break terminado. Continúa la ruta.')
+    } catch {
+      alert('No se pudo cambiar el lunch break. Revisa la conexión e intenta de nuevo.')
     } finally {
       setCheckingIn(false)
     }
@@ -583,28 +648,54 @@ export default function Driver() {
         )
       )}
 
-      <Map
-        className="map"
-        points={mapPoints}
-        routes={mapRoutes}
-        me={t.fix ? { lat: t.fix.lat, lng: t.fix.lng, heading: t.fix.heading } : null}
-        follow={follow}
-        onUserMove={() => setFollow(false)}
-        fitKey={ctx.stops.length ? 'stops' : ''}
-        fitTo={ctx.stops.map((s) => [s.lng, s.lat] as LngLat)}
-      />
+      {/* El cronómetro flota sobre el mapa en vez de ocupar una fila del panel:
+          en un teléfono cada píxel que le quita al mapa es calle que el chofer
+          deja de ver. */}
+      <div className="map-area">
+        <Map
+          className="map"
+          points={mapPoints}
+          routes={mapRoutes}
+          me={t.fix ? { lat: t.fix.lat, lng: t.fix.lng, heading: t.fix.heading } : null}
+          follow={follow}
+          onUserMove={() => setFollow(false)}
+          fitKey={ctx.stops.length ? 'stops' : ''}
+          fitTo={ctx.stops.map((s) => [s.lng, s.lat] as LngLat)}
+        />
+
+        {/* Flotante, no en la fila de abajo: es un interruptor que se toca una
+            vez cada tanto y estaba comiéndole ancho a Centrar y Google Maps. */}
+        <button
+          className={`map-fab ${voice ? 'on' : ''}`}
+          title={voice ? 'Silenciar voz' : 'Activar voz'}
+          onClick={() => setVoice((v) => !v)}
+        >
+          {voice ? <Volume2 size={18} /> : <VolumeX size={18} />}
+        </button>
+
+        {/* El lunch pausa la ruta, así que manda sobre el cronómetro de la
+            parada: los dos no pueden estar corriendo a la vez. */}
+        {lunch.phase === 'activo' ? (
+          <div className={`dwell-pill lunch ${dwellLevel(lunch.left)}`}>
+            <Sandwich size={15} />
+            <b>{fmtCountdown(lunch.left)}</b>
+            <span>Lunch break · ruta en pausa</span>
+          </div>
+        ) : (
+          dwell && (
+            <div className={`dwell-pill ${dwellLevel(dwell.left)}`}>
+              <Timer size={15} />
+              <b>{fmtCountdown(dwell.left)}</b>
+              <span>
+                Corre tu tiempo en{' '}
+                <em style={{ color: readable(dwell.stop.color) }}>{dwell.stop.name}</em>
+              </span>
+            </div>
+          )
+        )}
+      </div>
 
       <div className="panel">
-        {dwell && (
-          <div className={`dwell-card ${dwell.left <= 5 * 60_000 ? 'urgent' : ''}`}>
-            <Timer size={20} />
-            <div>
-              <b>{fmtCountdown(dwell.left)}</b>
-              <small>Quédate en {dwell.stop.name}</small>
-            </div>
-          </div>
-        )}
-
         {next ? (
           <>
             <div className="next" onClick={() => setShowList((v) => !v)}>
@@ -626,15 +717,27 @@ export default function Driver() {
             {showList && (
               <ol className="stops">
                 {ctx.stops.map((s) => (
-                  <li key={s.id} className={s.visited_at ? 'done' : ''}>
-                    <span className="n">{s.seq}</span>
-                    <span style={{ color: readable(s.color), display: 'flex' }}>
-                      {createElement(stopIcon(s.icon), { size: 15 })}
-                    </span>
-                    <span className="nm">{s.name}</span>
-                    {s.dwell_min > 0 && <small className="dwell-tag">{s.dwell_min} min</small>}
-                    {s.visited_at && <Check size={15} color="var(--ok-2)" />}
-                  </li>
+                  // Fragment: el lunch se cuela entre dos paradas, no es una.
+                  <Fragment key={s.id}>
+                    <li className={s.visited_at ? 'done' : ''}>
+                      <span className="n">{s.seq}</span>
+                      <span style={{ color: readable(s.color), display: 'flex' }}>
+                        {createElement(stopIcon(s.icon), { size: 15 })}
+                      </span>
+                      <span className="nm">{s.name}</span>
+                      {s.dwell_min > 0 && <small className="dwell-tag">{s.dwell_min} min</small>}
+                      {s.visited_at && <Check size={15} color="var(--ok-2)" />}
+                    </li>
+                    {ctx.team.lunch_after_seq === s.seq && (
+                      <li className={`lunch-row ${lunch.phase === 'terminado' ? 'done' : ''}`}>
+                        <span className="n" />
+                        <Sandwich size={15} />
+                        <span className="nm">Lunch break</span>
+                        <small className="dwell-tag">{ctx.lunch_min} min</small>
+                        {lunch.phase === 'terminado' && <Check size={15} color="var(--ok-2)" />}
+                      </li>
+                    )}
+                  </Fragment>
                 ))}
               </ol>
             )}
@@ -651,23 +754,8 @@ export default function Driver() {
               <button className="b-primary" onClick={() => void t.goToMaps(next.lat, next.lng)}>
                 <Navigation size={16} /> Google Maps
               </button>
-              <button
-                className={`b-icon ${voice ? 'b-on' : ''}`}
-                title={voice ? 'Silenciar voz' : 'Activar voz'}
-                onClick={() => setVoice((v) => !v)}
-              >
-                {voice ? <Volume2 size={18} /> : <VolumeX size={18} />}
-              </button>
             </div>
 
-            <button
-              className="b-ok"
-              disabled={checkingIn}
-              onClick={() => void handleCheckin()}
-            >
-              <Check size={16} />
-              {checkingIn ? 'Registrando…' : 'Registrar llegada'}
-            </button>
           </>
         ) : (
           <div className="next done">
@@ -676,12 +764,49 @@ export default function Driver() {
           </div>
         )}
 
-        <button
-          className="b-danger"
-          onClick={() => void handleStop()}
-        >
-          <Power size={16} /> Terminar y dejar de compartir
-        </button>
+        {/* Un solo botón principal, el que toque según el momento. Va fuera del
+            bloque de arriba porque la última parada también tiene estancia y
+            para entonces ya no hay "siguiente". */}
+        {lunch.phase === 'activo' ? (
+          <button className="b-ok" disabled={checkingIn} onClick={() => void handleLunch(false)}>
+            <Play size={16} />
+            {checkingIn ? 'Cerrando…' : 'Terminar lunch break'}
+          </button>
+        ) : dwell ? (
+          <button
+            className="b-ok"
+            disabled={checkingIn}
+            onClick={() => void handleFinishDwell()}
+          >
+            <Play size={16} />
+            {checkingIn ? 'Cerrando…' : 'Continuar ruta'}
+          </button>
+        ) : (
+          next && (
+            <button className="b-ok" disabled={checkingIn} onClick={() => void handleCheckin()}>
+              <Check size={16} />
+              {checkingIn ? 'Registrando…' : 'Registrar llegada'}
+            </button>
+          )
+        )}
+
+        {/* Lunch y Terminar comparten fila. Se puede comer antes de lo
+            programado, pero una sola vez: cerrado el lunch, el botón se va. */}
+        <div className="actions end">
+          {lunch.phase !== 'activo' && lunch.phase !== 'terminado' && (
+            <button
+              className="b-warn b-third"
+              disabled={checkingIn}
+              title={`Lunch break de ${ctx.lunch_min} min`}
+              onClick={() => void handleLunch(true)}
+            >
+              <Sandwich size={16} /> Lunch
+            </button>
+          )}
+          <button className="b-danger" onClick={() => void handleStop()}>
+            <Power size={16} /> Terminar
+          </button>
+        </div>
       </div>
     </div>
   )
