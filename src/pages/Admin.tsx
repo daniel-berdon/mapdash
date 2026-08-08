@@ -468,6 +468,14 @@ export default function Admin() {
     })
   }
 
+  /**
+   * Todos o ninguno. Con nueve equipos encima del mapa, apagarlos de a uno
+   * para mirar una sola ruta es nueve clics y otros nueve para volver.
+   */
+  const allShown = hiddenTeams.size === 0
+  const toggleAllTeams = () =>
+    setHiddenTeams(allShown ? new Set(teams.map((t) => t.id)) : new Set())
+
   // ----------------------------------------------------------------- vista ---
   const vans: MapVan[] = useMemo(
     () =>
@@ -546,6 +554,14 @@ export default function Admin() {
             <MapPin size={16} /> Paradas
           </button>
         </nav>
+
+        {/* Fuera del scroll: es un mando de la lista entera, no una fila más. */}
+        {tab === 'equipos' && teams.length > 0 && (
+          <button className="b-ghost b-sm show-all" onClick={toggleAllTeams}>
+            {allShown ? <EyeOff size={15} /> : <Eye size={15} />}
+            {allShown ? 'Ocultar todas las rutas' : 'Mostrar todas las rutas'}
+          </button>
+        )}
 
         {/* Solo esta zona hace scroll, para que la bitácora de abajo no se
             escape de la vista al recorrer una lista larga de equipos. */}

@@ -491,6 +491,7 @@ button.status { cursor: pointer; }
 .admin nav button { flex: 1; }
 
 .list { display: flex; flex-direction: column; gap: 8px; }
+.show-all { justify-content: center; border: 1px solid var(--line); border-radius: var(--r); }
 .hint { display: flex; gap: 8px; font-size: 13px; color: var(--muted); }
 .hint svg { flex: none; margin-top: 2px; }
 

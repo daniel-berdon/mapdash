@@ -188,6 +188,18 @@ export default function Driver() {
     void load()
   }, [t.arrived, ctx, voice, load])
 
+  /**
+   * speechSynthesis tiene su propia cola y sobrevive a que cambie la pantalla:
+   * al desvincular el equipo, el chofer volvía al selector con la voz todavía
+   * narrando maniobras de una ruta que ya no es suya. Silenciar la voz tampoco
+   * callaba lo que ya estaba encolado.
+   */
+  const onRoute = Boolean(token && started && ctx && taken === null && !t.inUse && !displaced)
+  useEffect(() => {
+    if (!onRoute || !voice) window.speechSynthesis?.cancel()
+    return () => window.speechSynthesis?.cancel()
+  }, [onRoute, voice])
+
   const me: LngLat | null = t.fix ? [t.fix.lng, t.fix.lat] : null
   const pending = useMemo(() => (ctx?.stops ?? []).filter((s) => !s.visited_at), [ctx])
   const next: Stop | undefined = pending[0]
