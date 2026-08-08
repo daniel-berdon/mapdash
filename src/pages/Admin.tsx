@@ -17,6 +17,7 @@ import {
   RotateCcw,
   Sandwich,
   Search,
+  Settings,
   Sparkles,
   Smartphone,
   Timer,
@@ -76,6 +77,9 @@ export default function Admin() {
 
   const [tab, setTab] = useState<'equipos' | 'paradas'>('equipos')
   const [selTeam, setSelTeam] = useState<string | null>(null)
+  /** Equipo con la ficha de ajustes abierta. Separado de selTeam: seleccionar
+      encuadra el mapa, abrir ajustes es otra cosa. */
+  const [openTeam, setOpenTeam] = useState<string | null>(null)
   const [editPoint, setEditPoint] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   /** Qué debe encuadrar el mapa. La clave cambia para forzar el reencuadre. */
@@ -257,6 +261,7 @@ export default function Admin() {
     if (!confirm('¿Quitar este equipo? Se borra su ruta y su posición.')) return
     await supabase.from('teams').delete().eq('id', id)
     setTeams((t) => t.filter((x) => x.id !== id))
+    if (openTeam === id) setOpenTeam(null)
     if (selTeam === id) {
       setSelTeam(null)
       setFocus(null)
@@ -507,8 +512,8 @@ export default function Admin() {
   }))
 
   const point = points.find((p) => p.id === editPoint)
-  const sel = teams.find((t) => t.id === selTeam)
-  const selRoute = routes.find((r) => r.team_id === selTeam)
+  const sel = teams.find((t) => t.id === openTeam)
+  const selRoute = routes.find((r) => r.team_id === openTeam)
   const access = sel ? deviceAccess(sel, now) : null
   const lunch = lunchStatus(
     sel?.lunch_started_at ?? null,
@@ -585,33 +590,49 @@ export default function Admin() {
                         `${done}/${total}`
                       )}
                     </span>
-                    <button
-                      className="b-ghost b-icon"
-                      title={
-                        hiddenTeams.has(t.id)
-                          ? 'Mostrar equipo en el mapa'
-                          : 'Ocultar equipo del mapa'
-                      }
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        toggleTeam(t.id)
-                      }}
-                    >
-                      {hiddenTeams.has(t.id) ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                    <button
-                      className="b-ghost b-icon"
-                      title={
-                        pos ? 'Centrar el mapa en esta van' : 'Todavía no ha reportado posición'
-                      }
-                      disabled={!pos}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        locate(t.id)
-                      }}
-                    >
-                      <LocateFixed size={16} />
-                    </button>
+                    <span className="tools">
+                      <button
+                        className={`b-ghost b-icon ${hiddenTeams.has(t.id) ? '' : 'lit'}`}
+                        title={
+                          hiddenTeams.has(t.id)
+                            ? 'Mostrar equipo en el mapa'
+                            : 'Ocultar equipo del mapa'
+                        }
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleTeam(t.id)
+                        }}
+                      >
+                        {hiddenTeams.has(t.id) ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                      <button
+                        className="b-ghost b-icon"
+                        title={
+                          pos ? 'Centrar el mapa en esta van' : 'Todavía no ha reportado posición'
+                        }
+                        disabled={!pos}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          locate(t.id)
+                        }}
+                      >
+                        <LocateFixed size={16} />
+                      </button>
+                      {/* Los ajustes salen de la tarjeta entera: tocarla ahora
+                          solo encuadra el mapa, que es lo que se hace todo el
+                          tiempo; abrir la ficha es lo excepcional. */}
+                      <button
+                        className={`b-ghost b-icon ${openTeam === t.id ? 'lit' : ''}`}
+                        title="Ajustes del equipo"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setOpenTeam(openTeam === t.id ? null : t.id)
+                          selectTeam(t.id)
+                        }}
+                      >
+                        <Settings size={16} />
+                      </button>
+                    </span>
                   </div>
                   <small className={`state ${finished ? 'hit' : state}`}>
                     {finished ? (
@@ -727,7 +748,7 @@ export default function Admin() {
           <div className="sheet-head">
             <VanIcon size={16} color={readable(sel.color)} />
             <b>{sel.name}</b>
-            <button className="b-ghost b-icon" title="Cerrar" onClick={() => selectTeam(null)}>
+            <button className="b-ghost b-icon" title="Cerrar" onClick={() => setOpenTeam(null)}>
               <X size={16} />
             </button>
           </div>

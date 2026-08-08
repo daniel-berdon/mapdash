@@ -506,6 +506,11 @@ button.status { cursor: pointer; }
 .team.sel { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(59, 130, 246, .35); }
 .team.done { border-color: rgba(34, 197, 94, .45); }
 .team .row { display: flex; align-items: center; gap: 8px; }
+/* Los tres iconos van más juntos entre sí que del resto de la fila: se leen
+   como un grupo, no como tres cosas sueltas. */
+.team .row .tools { display: flex; align-items: center; gap: 1px; }
+/* Toggle encendido: azul. Apagado se queda en el gris de .b-ghost. */
+.team .row .b-icon.lit, .team .row .b-icon.lit:hover:not(:disabled) { color: var(--primary-2); }
 .team .row .grow {
   margin-left: auto;
   color: var(--muted);
