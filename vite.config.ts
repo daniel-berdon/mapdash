@@ -35,6 +35,10 @@ export default defineConfig(({ mode }) => {
     // `{type:'module'}`), así que hay que emitirlo como tal. Ver el comentario
     // en components/Map.tsx.
     worker: { format: 'es' },
+    // El chunk gordo es MapLibre entero (~250 kB gzip) y no se puede partir en
+    // trozos útiles: ya va en su propio archivo, cargado solo por /admin y el
+    // chofer. El aviso de 500 kB solo sería ruido en cada build.
+    build: { chunkSizeWarningLimit: 1000 },
     // Túneles HTTPS (cloudflared / localtunnel) para probar el GPS en el celular.
     server: {
       host: true,

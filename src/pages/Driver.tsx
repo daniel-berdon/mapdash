@@ -86,6 +86,9 @@ const ANNOUNCE_M = [300, 50]
 const TOKEN_KEY = 'mapdash:team'
 const STARTED_KEY = 'mapdash:started'
 
+/** "Sin ruta todavía", con referencia fija para no romper los useMemo. */
+const EMPTY: LngLat[] = []
+
 export default function Driver() {
   const { token: urlToken } = useParams()
   const navigate = useNavigate()
@@ -200,7 +203,10 @@ export default function Driver() {
     return () => window.speechSynthesis?.cancel()
   }, [onRoute, voice])
 
-  const me: LngLat | null = t.fix ? [t.fix.lng, t.fix.lat] : null
+  // Referencia estable: si `me` fuese un literal nuevo en cada render, los
+  // useMemo/useEffect que dependen de él no acertarían nunca. Y esta pantalla
+  // se re-renderiza cada segundo por el reloj de permanencia.
+  const me: LngLat | null = useMemo(() => (t.fix ? [t.fix.lng, t.fix.lat] : null), [t.fix])
   const pending = useMemo(() => (ctx?.stops ?? []).filter((s) => !s.visited_at), [ctx])
   const next: Stop | undefined = pending[0]
 
@@ -254,7 +260,13 @@ export default function Driver() {
     }
   }, [dwell, voice])
 
-  const line = detour?.coordinates ?? ctx?.route?.geometry?.coordinates ?? []
+  // Mismo motivo que `me`: el `?? []` creaba un array nuevo cada render y
+  // projectOnLine acababa recorriendo la polilínea entera (miles de vértices)
+  // una vez por segundo, en el móvil del chofer.
+  const line = useMemo(
+    () => detour?.coordinates ?? ctx?.route?.geometry?.coordinates ?? EMPTY,
+    [detour, ctx],
+  )
   const steps = detour?.steps ?? ctx?.route?.steps ?? []
 
   // --- navegación propia (capa 3) ---

@@ -1,11 +1,15 @@
 import type { Session } from '@supabase/supabase-js'
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { configOk, supabase } from './lib/supabase'
-import Admin from './pages/Admin'
-import Driver from './pages/Driver'
-import Home from './pages/Home'
-import Login from './pages/Login'
+
+// Una página por chunk. MapLibre son ~230 kB gzip y solo lo usan /admin y el
+// chofer: quien abre el enlace de su equipo ya no se descarga además el panel
+// de admin entero, ni al revés.
+const Admin = lazy(() => import('./pages/Admin'))
+const Driver = lazy(() => import('./pages/Driver'))
+const Home = lazy(() => import('./pages/Home'))
+const Login = lazy(() => import('./pages/Login'))
 
 export default function App() {
   // undefined = todavía no sabemos si hay sesión; null = no hay.
@@ -32,21 +36,23 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        {/* Link individual del chofer. Sin login y sin ver a los demás. */}
-        <Route path="/d/:token" element={<Driver />} />
-        {/* Link general: el chofer elige su equipo de una lista. */}
-        <Route path="/seleccion" element={<Driver />} />
-        <Route path="/d" element={<Navigate to="/seleccion" replace />} />
-        <Route
-          path="/admin"
-          element={
-            session === undefined ? <div className="splash" /> : session ? <Admin /> : <Login />
-          }
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <Suspense fallback={<div className="splash" />}>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          {/* Link individual del chofer. Sin login y sin ver a los demás. */}
+          <Route path="/d/:token" element={<Driver />} />
+          {/* Link general: el chofer elige su equipo de una lista. */}
+          <Route path="/seleccion" element={<Driver />} />
+          <Route path="/d" element={<Navigate to="/seleccion" replace />} />
+          <Route
+            path="/admin"
+            element={
+              session === undefined ? <div className="splash" /> : session ? <Admin /> : <Login />
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   )
 }

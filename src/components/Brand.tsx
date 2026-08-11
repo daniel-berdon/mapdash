@@ -1,16 +1,29 @@
 import { useState } from 'react'
 
-// El logo lo pone el cliente en public/. Se prueban los dos formatos y, si no
-// hay ninguno, queda solo el nombre: mejor eso que un icono de imagen rota.
-const SOURCES = ['/logo.svg', '/logo.png']
+// Tamaño real del archivo. Va en el <img> para que el navegador reserve el
+// hueco antes de descargarlo y el texto de debajo no salte (CLS).
+const W = 490
+const H = 288
 
 export default function Brand({ big, name = true }: { big?: boolean; name?: boolean }) {
-  const [i, setI] = useState(0)
+  // El logo lo pone el cliente en public/. Si no está, queda solo el nombre:
+  // mejor eso que un icono de imagen rota.
+  const [ok, setOk] = useState(true)
 
   return (
     <div className={`brand${big ? ' brand-big' : ''}`}>
-      {i < SOURCES.length && (
-        <img src={SOURCES[i]} alt="MapDash" onError={() => setI(i + 1)} />
+      {ok && (
+        <img
+          src="/logo.webp"
+          alt="MapDash"
+          width={W}
+          height={H}
+          // Es lo más grande que se ve en las pantallas de carga: que no espere
+          // su turno detrás del resto de peticiones.
+          fetchPriority="high"
+          decoding="async"
+          onError={() => setOk(false)}
+        />
       )}
       {name && <b>MapDash</b>}
     </div>

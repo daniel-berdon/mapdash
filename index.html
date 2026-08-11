@@ -14,6 +14,14 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="manifest" href="/manifest.webmanifest" />
 
+    <!-- La fuente y el logo salen en cuanto pinta la primera pantalla. Sin esto
+         el navegador no los descubre hasta haber bajado y parseado el CSS/JS. -->
+    <link rel="preload" href="/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/logo.webp" as="image" type="image/webp" fetchpriority="high" />
+    <!-- Los tiles del mapa son el primer fetch pesado del chofer: abrir la
+         conexión (DNS + TLS) mientras carga el JS ahorra ~200 ms en móvil. -->
+    <link rel="preconnect" href="https://api.maptiler.com" crossorigin />
+
     <!-- Instalada en pantalla de inicio, iOS da Wake Lock (18.4+) y una barra
          menos, que en un soporte de coche se agradece -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
