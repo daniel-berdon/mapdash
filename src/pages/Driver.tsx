@@ -185,19 +185,6 @@ export default function Driver() {
     return () => clearInterval(id)
   }, [load])
 
-  // Check-in automático: el servidor decide, aquí solo se refleja y se anuncia.
-  const announced = useRef(new Set<string>())
-  useEffect(() => {
-    if (!t.arrived.length || !ctx) return
-    for (const id of t.arrived) {
-      if (announced.current.has(id)) continue
-      announced.current.add(id)
-      const p = ctx.stops.find((s) => s.id === id)
-      if (p && voice) speak(arrivalSpeech(p.name, p.dwell_min, preLunch(p, ctx)))
-    }
-    void load()
-  }, [t.arrived, ctx, voice, load])
-
   /**
    * speechSynthesis tiene su propia cola y sobrevive a que cambie la pantalla:
    * al desvincular el equipo, el chofer volvía al selector con la voz todavía
@@ -209,6 +196,32 @@ export default function Driver() {
     if (!onRoute || !voice) window.speechSynthesis?.cancel()
     return () => window.speechSynthesis?.cancel()
   }, [onRoute, voice])
+
+  /**
+   * Único portero de la voz. La ruta se carga en cuanto hay token, así que los
+   * cronómetros de parada y de lunch ya corren en la pantalla de bienvenida: sin
+   * este filtro, el teléfono se ponía a narrar antes de que el chofer tocara
+   * "Iniciar". Nada se dice mientras no esté en ruta de verdad.
+   */
+  const say = useCallback(
+    (text: string) => {
+      if (onRoute && voice) speak(text)
+    },
+    [onRoute, voice],
+  )
+
+  // Check-in automático: el servidor decide, aquí solo se refleja y se anuncia.
+  const announced = useRef(new Set<string>())
+  useEffect(() => {
+    if (!t.arrived.length || !ctx) return
+    for (const id of t.arrived) {
+      if (announced.current.has(id)) continue
+      announced.current.add(id)
+      const p = ctx.stops.find((s) => s.id === id)
+      if (p) say(arrivalSpeech(p.name, p.dwell_min, preLunch(p, ctx)))
+    }
+    void load()
+  }, [t.arrived, ctx, say, load])
 
   // Referencia estable: si `me` fuese un literal nuevo en cada render, los
   // useMemo/useEffect que dependen de él no acertarían nunca. Y esta pantalla
@@ -284,12 +297,12 @@ export default function Driver() {
     if (!dwell) {
       // Se cumplió mientras la pantalla estaba abierta. Tras una recarga con el
       // tiempo ya vencido, prev es null y no se anuncia nada viejo.
-      if (prev && voice) {
-        speak(`Tiempo cumplido en ${prev.name}. Puedes continuar.`)
+      if (prev) {
+        say(`Tiempo cumplido en ${prev.name}. Puedes continuar.`)
         // Durante la actividad la ruta va callada; al cerrarla se retoma con la
         // maniobra en curso, sin esperar a cruzar los 300 m del próximo aviso.
         // Salvo que lo que siga sea el lunch: ahí tampoco se conduce todavía.
-        if (instruction && !paused) speak(instruction)
+        if (instruction && !paused) say(instruction)
       }
       return
     }
@@ -297,13 +310,13 @@ export default function Driver() {
       const key = `${dwell.stop.id}@${mark}`
       if (!dwellAlertDue(dwell.left, mark) || dwellSaid.current.has(key)) continue
       dwellSaid.current.add(key)
-      if (voice) speak(`Quedan ${mark} minutos en ${dwell.stop.name}`)
+      say(`Quedan ${mark} minutos en ${dwell.stop.name}`)
     }
     // `instruction` y `paused` no van en las dependencias a propósito: se leen
     // al cerrar la estancia y volver a correr por cada maniobra reanudaría el
     // aviso.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dwell, voice])
+  }, [dwell, say])
 
   /**
    * Arranque del lunch. Lo programa el servidor al terminar la parada previa,
@@ -314,10 +327,10 @@ export default function Driver() {
   useEffect(() => {
     const prev = lunchPhase.current
     lunchPhase.current = lunch.phase
-    if (prev && prev !== 'activo' && lunch.phase === 'activo' && voice) {
-      speak(`Inicia el tiempo de lunch break. Tienen ${ctx?.lunch_min ?? 45} minutos.`)
+    if (prev && prev !== 'activo' && lunch.phase === 'activo') {
+      say(`Inicia el tiempo de lunch break. Tienen ${ctx?.lunch_min ?? 45} minutos.`)
     }
-  }, [lunch.phase, ctx?.lunch_min, voice])
+  }, [lunch.phase, ctx?.lunch_min, say])
 
   /**
    * Cierre de la ruta. Solo se felicita si la última parada se cerró con esta
@@ -332,25 +345,27 @@ export default function Driver() {
     // Con la estancia de la última parada todavía corriendo la ruta no terminó.
     if (!ctx || !hadPending.current || paused) return
     hadPending.current = false
-    if (voice) speak('¡Felicidades! Terminaste la ruta.')
-  }, [pending.length, ctx, paused, voice])
+    say('¡Felicidades! Terminaste la ruta.')
+  }, [pending.length, ctx, paused, say])
 
   // Voz: cada maniobra se anuncia a 300 m y a 50 m, una sola vez cada una.
   // Con la ruta en pausa va callada: el chofer está parado y lo único que le
   // importa es el tiempo que le queda.
   const spoken = useRef(new Set<string>())
   useEffect(() => {
-    if (paused) return
-    if (!voice || !step || !instruction || toManeuver == null || stepIdx < 0) return
+    // El corte va antes de marcar la maniobra como dicha: callado no es lo
+    // mismo que anunciado, y al volver la voz el chofer debe oír lo que falta.
+    if (paused || !onRoute || !voice) return
+    if (!step || !instruction || toManeuver == null || stepIdx < 0) return
     for (const mark of ANNOUNCE_M) {
       const key = `${stepIdx}@${mark}`
       if (toManeuver <= mark && !spoken.current.has(key)) {
         spoken.current.add(key)
-        speak(mark >= 200 ? `En ${fmtDist(toManeuver)}, ${instruction}` : instruction)
+        say(mark >= 200 ? `En ${fmtDist(toManeuver)}, ${instruction}` : instruction)
         break
       }
     }
-  }, [stepIdx, toManeuver, step, instruction, voice, paused])
+  }, [stepIdx, toManeuver, step, instruction, say, paused, onRoute, voice])
 
   // La ruta de la base va de parada a parada. Aquí se traza desde DONDE ESTÁ
   // el chofer: al arrancar, al llegar a una parada y si se desvía.
@@ -395,7 +410,7 @@ export default function Driver() {
         routedFor.current = key
         spoken.current.clear()
         offSince.current = null
-        if (announce && voice && !paused) speak('Recalculando ruta')
+        if (announce && !paused) say('Recalculando ruta')
       })
       // Si ORS falla se conserva lo que haya: peor es dejar la pantalla vacía.
       .catch(() => {})
@@ -404,7 +419,7 @@ export default function Driver() {
         // Si llegó otra parada mientras ORS respondía, hay que trazar de nuevo.
         if (routedFor.current !== pendingKeyRef.current) setRouteTick((n) => n + 1)
       })
-  }, [me, proj, pending, pendingKey, voice, routeTick, paused])
+  }, [me, proj, pending, pendingKey, say, routeTick, paused])
 
   const handleStart = async () => {
     // Reservar el equipo ANTES de encender el GPS: si lo tiene otro teléfono,
@@ -427,7 +442,9 @@ export default function Driver() {
     setDisplaced(false)
     resumed.current = true // ya arrancamos aquí; el efecto no debe repetirlo
     setStarted(true)
-    speak('Compartiendo ubicación') // desbloquea la voz en iOS
+    // El único speak que no pasa por `say`: es el gesto que desbloquea la voz en
+    // iOS, y `onRoute` todavía es falso en este render.
+    speak('Compartiendo ubicación')
     await t.start()
   }
 
@@ -448,9 +465,7 @@ export default function Driver() {
       for (const id of arrived) {
         if (announced.current.has(id)) continue
         announced.current.add(id)
-        if (voice) {
-          speak(arrivalSpeech(next.name, next.dwell_min, !!ctx && preLunch(next, ctx)))
-        }
+        say(arrivalSpeech(next.name, next.dwell_min, !!ctx && preLunch(next, ctx)))
       }
       await load()
     } catch {
@@ -496,7 +511,7 @@ export default function Driver() {
     try {
       await setLunch(token, deviceId(), false)
       await load()
-      if (voice) speak('Lunch break terminado. Continúa la ruta.')
+      say('Lunch break terminado. Continúa la ruta.')
     } catch {
       alert('No se pudo cambiar el lunch break. Revisa la conexión e intenta de nuevo.')
     } finally {
