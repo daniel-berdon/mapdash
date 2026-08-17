@@ -33,6 +33,7 @@ import {
   dwellLevel,
   fmtCountdown,
   lunchStatus,
+  type LunchPhase,
 } from '../lib/dwell'
 import {
   currentStepIndex,
@@ -250,6 +251,13 @@ export default function Driver() {
   const here = dwell?.stop ?? next
   const lunchAhead = Boolean(here && ctx && lunch.phase !== 'terminado' && preLunch(here, ctx))
 
+  /**
+   * La ruta está en pausa: corre el tiempo de la parada o el del lunch. El
+   * chofer está detenido, así que nada de lo que tenga que ver con conducir se
+   * narra hasta que vuelva a arrancar.
+   */
+  const paused = Boolean(dwell) || lunch.phase === 'activo'
+
   // Mismo motivo que `me`: el `?? []` creaba un array nuevo cada render y
   // projectOnLine acababa recorriendo la polilínea entera (miles de vértices)
   // una vez por segundo, en el móvil del chofer.
@@ -280,7 +288,8 @@ export default function Driver() {
         speak(`Tiempo cumplido en ${prev.name}. Puedes continuar.`)
         // Durante la actividad la ruta va callada; al cerrarla se retoma con la
         // maniobra en curso, sin esperar a cruzar los 300 m del próximo aviso.
-        if (instruction) speak(instruction)
+        // Salvo que lo que siga sea el lunch: ahí tampoco se conduce todavía.
+        if (instruction && !paused) speak(instruction)
       }
       return
     }
@@ -290,17 +299,48 @@ export default function Driver() {
       dwellSaid.current.add(key)
       if (voice) speak(`Quedan ${mark} minutos en ${dwell.stop.name}`)
     }
-    // `instruction` no va en las dependencias a propósito: se lee al cerrar la
-    // estancia y volver a correr por cada maniobra reanudaría el aviso.
+    // `instruction` y `paused` no van en las dependencias a propósito: se leen
+    // al cerrar la estancia y volver a correr por cada maniobra reanudaría el
+    // aviso.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dwell, voice])
 
+  /**
+   * Arranque del lunch. Lo programa el servidor al terminar la parada previa,
+   * así que el chofer se entera por aquí. Tras una recarga con el lunch ya en
+   * curso, `prev` es null y no se anuncia un inicio viejo.
+   */
+  const lunchPhase = useRef<LunchPhase | null>(null)
+  useEffect(() => {
+    const prev = lunchPhase.current
+    lunchPhase.current = lunch.phase
+    if (prev && prev !== 'activo' && lunch.phase === 'activo' && voice) {
+      speak(`Inicia el tiempo de lunch break. Tienen ${ctx?.lunch_min ?? 45} minutos.`)
+    }
+  }, [lunch.phase, ctx?.lunch_min, voice])
+
+  /**
+   * Cierre de la ruta. Solo se felicita si la última parada se cerró con esta
+   * pantalla abierta: entrar con la ruta ya terminada no felicita a nadie.
+   */
+  const hadPending = useRef(false)
+  useEffect(() => {
+    if (pending.length) {
+      hadPending.current = true
+      return
+    }
+    // Con la estancia de la última parada todavía corriendo la ruta no terminó.
+    if (!ctx || !hadPending.current || paused) return
+    hadPending.current = false
+    if (voice) speak('¡Felicidades! Terminaste la ruta.')
+  }, [pending.length, ctx, paused, voice])
+
   // Voz: cada maniobra se anuncia a 300 m y a 50 m, una sola vez cada una.
-  // Mientras corre la actividad de la parada (o el lunch) la ruta va callada:
-  // el chofer está parado y lo único que le importa es el tiempo que le queda.
+  // Con la ruta en pausa va callada: el chofer está parado y lo único que le
+  // importa es el tiempo que le queda.
   const spoken = useRef(new Set<string>())
   useEffect(() => {
-    if (dwell || lunch.phase === 'activo') return
+    if (paused) return
     if (!voice || !step || !instruction || toManeuver == null || stepIdx < 0) return
     for (const mark of ANNOUNCE_M) {
       const key = `${stepIdx}@${mark}`
@@ -310,7 +350,7 @@ export default function Driver() {
         break
       }
     }
-  }, [stepIdx, toManeuver, step, instruction, voice, dwell, lunch.phase])
+  }, [stepIdx, toManeuver, step, instruction, voice, paused])
 
   // La ruta de la base va de parada a parada. Aquí se traza desde DONDE ESTÁ
   // el chofer: al arrancar, al llegar a una parada y si se desvía.
@@ -355,7 +395,7 @@ export default function Driver() {
         routedFor.current = key
         spoken.current.clear()
         offSince.current = null
-        if (announce && voice) speak('Recalculando ruta')
+        if (announce && voice && !paused) speak('Recalculando ruta')
       })
       // Si ORS falla se conserva lo que haya: peor es dejar la pantalla vacía.
       .catch(() => {})
@@ -364,7 +404,7 @@ export default function Driver() {
         // Si llegó otra parada mientras ORS respondía, hay que trazar de nuevo.
         if (routedFor.current !== pendingKeyRef.current) setRouteTick((n) => n + 1)
       })
-  }, [me, proj, pending, pendingKey, voice, routeTick])
+  }, [me, proj, pending, pendingKey, voice, routeTick, paused])
 
   const handleStart = async () => {
     // Reservar el equipo ANTES de encender el GPS: si lo tiene otro teléfono,
