@@ -512,9 +512,13 @@ export default function Admin() {
     [routes, teams, hiddenTeams],
   )
 
+  // El ojo manda también sobre la numeración: con la ruta del equipo oculta, su
+  // orden de visitas tampoco se pinta sobre las paradas.
+  const seqTeam = selTeam && !hiddenTeams.has(selTeam) ? selTeam : null
+
   const mapPoints: MapPoint[] = points.map((p) => ({
     ...p,
-    seq: selTeam ? stops.find((s) => s.team_id === selTeam && s.point_id === p.id)?.seq : undefined,
+    seq: seqTeam ? stops.find((s) => s.team_id === seqTeam && s.point_id === p.id)?.seq : undefined,
     visited: selTeam ? visits.some((v) => v.team_id === selTeam && v.point_id === p.id) : false,
     draggable: tab === 'paradas',
   }))
