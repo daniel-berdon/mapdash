@@ -143,9 +143,13 @@ export interface TeamChoice {
   taken: boolean
 }
 
-/** Equipos para el selector del link general /d. */
-export async function listTeams(): Promise<TeamChoice[]> {
-  const { data, error } = await supabase.rpc('list_teams')
+/**
+ * Equipos para el selector del link general /d. El dispositivo va porque el
+ * equipo que ya tiene vinculado este teléfono no cuenta como tomado: es suyo y
+ * puede volver a elegirlo.
+ */
+export async function listTeams(device?: string): Promise<TeamChoice[]> {
+  const { data, error } = await supabase.rpc('list_teams', { p_device: device ?? null })
   if (error) throw error
   return (data ?? []) as TeamChoice[]
 }

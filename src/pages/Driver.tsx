@@ -937,7 +937,7 @@ function TeamPicker({ onPick }: { onPick: (token: string) => void }) {
   useEffect(() => {
     let active = true
     const loadTeams = () => {
-      listTeams()
+      listTeams(deviceId())
         .then((rows) => {
           if (!active) return
           setTeams(rows)
