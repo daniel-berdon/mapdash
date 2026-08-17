@@ -437,6 +437,8 @@ button.status { cursor: pointer; }
 .dwell-pill.red { color: var(--bad-2); border-color: rgba(239, 68, 68, .65); }
 /* El lunch no urge como una parada: arranca ámbar y solo se pone rojo al final. */
 .dwell-pill.lunch { color: var(--warn-2); border-color: rgba(245, 158, 11, .6); }
+/* Segunda fila, para cuando el aviso de lunch convive con el cronómetro. */
+.dwell-pill.stack { bottom: 52px; }
 
 .actions { display: flex; gap: 8px; }
 .actions button { flex: 1; }

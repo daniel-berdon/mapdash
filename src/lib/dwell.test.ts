@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { dwellAlertDue, dwellLeftMs, dwellLevel, fmtCountdown, lunchStatus } from './dwell'
+import {
+  arrivalSpeech,
+  dwellAlertDue,
+  dwellLeftMs,
+  dwellLevel,
+  fmtCountdown,
+  lunchStatus,
+} from './dwell'
 
 const MIN = 60_000
 const t0 = new Date('2026-08-07T12:00:00Z')
@@ -64,6 +71,25 @@ describe('dwellLevel', () => {
   it('rojo en los últimos 5', () => {
     expect(dwellLevel(5 * MIN)).toBe('red')
     expect(dwellLevel(1_000)).toBe('red')
+  })
+})
+
+describe('arrivalSpeech', () => {
+  it('dice cuánto tiempo hay para los desafíos', () => {
+    expect(arrivalSpeech('Parque', 20, false)).toBe(
+      'Llegaste a Parque. Tienen 20 minutos para realizar los desafíos.',
+    )
+  })
+
+  it('una parada de paso no promete tiempo', () => {
+    expect(arrivalSpeech('Parque', 0, false)).toBe('Llegaste a Parque.')
+  })
+
+  it('avisa el lunch en la parada previa', () => {
+    expect(arrivalSpeech('Parque', 20, true)).toBe(
+      'Llegaste a Parque. Tienen 20 minutos para realizar los desafíos. ' +
+        'La siguiente parada es el lunch break.',
+    )
   })
 })
 

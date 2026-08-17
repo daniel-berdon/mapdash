@@ -42,6 +42,22 @@ export function lunchStatus(
   return left > 0 ? { phase: 'activo', left } : { phase: 'terminado', left: 0 }
 }
 
+/**
+ * Lo que se narra al registrar la llegada a una parada.
+ *
+ * El chofer necesita saber de cuánto tiempo dispone en el momento en que se
+ * marca la parada, no después: las indicaciones de ruta se callan hasta que
+ * cierra la actividad. Y si el lunch va justo después, se avisa aquí, que es
+ * cuando todavía puede organizarse.
+ */
+export function arrivalSpeech(name: string, dwellMin: number, lunchNext: boolean): string {
+  return (
+    `Llegaste a ${name}.` +
+    (dwellMin > 0 ? ` Tienen ${dwellMin} minutos para realizar los desafíos.` : '') +
+    (lunchNext ? ' La siguiente parada es el lunch break.' : '')
+  )
+}
+
 /** Milisegundos que faltan para cumplir la estancia. 0 = cumplida o sin tiempo. */
 export function dwellLeftMs(arrivedAt: string, dwellMin: number, now: number): number {
   if (!dwellMin) return 0

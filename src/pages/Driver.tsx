@@ -27,6 +27,7 @@ import Map, { type MapPoint, type MapRoute } from '../components/Map'
 import { alpha, contrastText, readable } from '../lib/color'
 import {
   DWELL_ALERTS,
+  arrivalSpeech,
   dwellAlertDue,
   dwellLeftMs,
   dwellLevel,
@@ -88,6 +89,11 @@ const STARTED_KEY = 'mapdash:started'
 
 /** "Sin ruta todavía", con referencia fija para no romper los useMemo. */
 const EMPTY: LngLat[] = []
+
+/** ¿Esta parada es la última antes del lunch break? */
+function preLunch(s: Stop, ctx: DriverContext): boolean {
+  return s.seq === ctx.team.lunch_after_seq && !ctx.team.lunch_ended_at
+}
 
 export default function Driver() {
   const { token: urlToken } = useParams()
@@ -186,7 +192,7 @@ export default function Driver() {
       if (announced.current.has(id)) continue
       announced.current.add(id)
       const p = ctx.stops.find((s) => s.id === id)
-      if (p && voice) speak(`Llegaste a ${p.name}`)
+      if (p && voice) speak(arrivalSpeech(p.name, p.dwell_min, preLunch(p, ctx)))
     }
     void load()
   }, [t.arrived, ctx, voice, load])
@@ -240,25 +246,9 @@ export default function Driver() {
     now,
   )
 
-  // Avisos por voz: faltan 10, faltan 5, y el aviso de que ya puede seguir.
-  const dwellSaid = useRef(new Set<string>())
-  const dwellingAt = useRef<Stop | null>(null)
-  useEffect(() => {
-    const prev = dwellingAt.current
-    dwellingAt.current = dwell?.stop ?? null
-    if (!dwell) {
-      // Se cumplió mientras la pantalla estaba abierta. Tras una recarga con el
-      // tiempo ya vencido, prev es null y no se anuncia nada viejo.
-      if (prev && voice) speak(`Tiempo cumplido en ${prev.name}. Puedes continuar.`)
-      return
-    }
-    for (const mark of DWELL_ALERTS) {
-      const key = `${dwell.stop.id}@${mark}`
-      if (!dwellAlertDue(dwell.left, mark) || dwellSaid.current.has(key)) continue
-      dwellSaid.current.add(key)
-      if (voice) speak(`Quedan ${mark} minutos en ${dwell.stop.name}`)
-    }
-  }, [dwell, voice])
+  // La parada en curso —o aquella hacia la que va— es la previa al lunch.
+  const here = dwell?.stop ?? next
+  const lunchAhead = Boolean(here && ctx && lunch.phase !== 'terminado' && preLunch(here, ctx))
 
   // Mismo motivo que `me`: el `?? []` creaba un array nuevo cada render y
   // projectOnLine acababa recorriendo la polilínea entera (miles de vértices)
@@ -277,9 +267,40 @@ export default function Driver() {
   const toManeuver =
     step && me && proj ? metersAlong(line, me, proj.index, step.way_points[1]) : null
 
+  // Avisos por voz: faltan 10, faltan 5, y el aviso de que ya puede seguir.
+  const dwellSaid = useRef(new Set<string>())
+  const dwellingAt = useRef<Stop | null>(null)
+  useEffect(() => {
+    const prev = dwellingAt.current
+    dwellingAt.current = dwell?.stop ?? null
+    if (!dwell) {
+      // Se cumplió mientras la pantalla estaba abierta. Tras una recarga con el
+      // tiempo ya vencido, prev es null y no se anuncia nada viejo.
+      if (prev && voice) {
+        speak(`Tiempo cumplido en ${prev.name}. Puedes continuar.`)
+        // Durante la actividad la ruta va callada; al cerrarla se retoma con la
+        // maniobra en curso, sin esperar a cruzar los 300 m del próximo aviso.
+        if (instruction) speak(instruction)
+      }
+      return
+    }
+    for (const mark of DWELL_ALERTS) {
+      const key = `${dwell.stop.id}@${mark}`
+      if (!dwellAlertDue(dwell.left, mark) || dwellSaid.current.has(key)) continue
+      dwellSaid.current.add(key)
+      if (voice) speak(`Quedan ${mark} minutos en ${dwell.stop.name}`)
+    }
+    // `instruction` no va en las dependencias a propósito: se lee al cerrar la
+    // estancia y volver a correr por cada maniobra reanudaría el aviso.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dwell, voice])
+
   // Voz: cada maniobra se anuncia a 300 m y a 50 m, una sola vez cada una.
+  // Mientras corre la actividad de la parada (o el lunch) la ruta va callada:
+  // el chofer está parado y lo único que le importa es el tiempo que le queda.
   const spoken = useRef(new Set<string>())
   useEffect(() => {
+    if (dwell || lunch.phase === 'activo') return
     if (!voice || !step || !instruction || toManeuver == null || stepIdx < 0) return
     for (const mark of ANNOUNCE_M) {
       const key = `${stepIdx}@${mark}`
@@ -289,7 +310,7 @@ export default function Driver() {
         break
       }
     }
-  }, [stepIdx, toManeuver, step, instruction, voice])
+  }, [stepIdx, toManeuver, step, instruction, voice, dwell, lunch.phase])
 
   // La ruta de la base va de parada a parada. Aquí se traza desde DONDE ESTÁ
   // el chofer: al arrancar, al llegar a una parada y si se desvía.
@@ -387,7 +408,9 @@ export default function Driver() {
       for (const id of arrived) {
         if (announced.current.has(id)) continue
         announced.current.add(id)
-        if (voice) speak(`Llegaste a ${next.name}`)
+        if (voice) {
+          speak(arrivalSpeech(next.name, next.dwell_min, !!ctx && preLunch(next, ctx)))
+        }
       }
       await load()
     } catch {
@@ -421,21 +444,19 @@ export default function Driver() {
     }
   }
 
-  /** Botón de lunch break: arrancarlo antes de tiempo o darlo por terminado. */
-  const handleLunch = async (start: boolean) => {
+  /**
+   * Cerrar el lunch break. Arrancarlo no es cosa del chofer: lo programa el
+   * servidor al terminar la parada previa, para que todos los equipos coman
+   * cuando toca y no cuando les parece.
+   */
+  const handleEndLunch = async () => {
     if (checkingIn) return
-    const min = ctx?.lunch_min ?? 45
-    const ok = confirm(
-      start
-        ? `¿Iniciar el lunch break?\n\nSon ${min} minutos y la ruta queda en pausa mientras tanto.`
-        : `¿Terminar el lunch break y seguir con la ruta?`,
-    )
-    if (!ok) return
+    if (!confirm('¿Terminar el lunch break y seguir con la ruta?')) return
     setCheckingIn(true)
     try {
-      await setLunch(token, deviceId(), start)
+      await setLunch(token, deviceId(), false)
       await load()
-      if (voice) speak(start ? 'Lunch break iniciado' : 'Lunch break terminado. Continúa la ruta.')
+      if (voice) speak('Lunch break terminado. Continúa la ruta.')
     } catch {
       alert('No se pudo cambiar el lunch break. Revisa la conexión e intenta de nuevo.')
     } finally {
@@ -717,6 +738,17 @@ export default function Driver() {
             </div>
           )
         )}
+
+        {/* Aviso de que lo que sigue no es una parada. Se apila encima del
+            cronómetro cuando los dos están en pantalla. */}
+        {lunch.phase !== 'activo' && lunchAhead && (
+          <div className={`dwell-pill lunch ${dwell ? 'stack' : ''}`}>
+            <Sandwich size={15} />
+            <span>
+              Después de esta parada: <em>Lunch break</em> · {ctx.lunch_min} min
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="panel">
@@ -792,7 +824,7 @@ export default function Driver() {
             bloque de arriba porque la última parada también tiene estancia y
             para entonces ya no hay "siguiente". */}
         {lunch.phase === 'activo' ? (
-          <button className="b-ok" disabled={checkingIn} onClick={() => void handleLunch(false)}>
+          <button className="b-ok" disabled={checkingIn} onClick={() => void handleEndLunch()}>
             <Play size={16} />
             {checkingIn ? 'Cerrando…' : 'Terminar lunch break'}
           </button>
@@ -814,19 +846,7 @@ export default function Driver() {
           )
         )}
 
-        {/* Lunch y Terminar comparten fila. Se puede comer antes de lo
-            programado, pero una sola vez: cerrado el lunch, el botón se va. */}
         <div className="actions end">
-          {lunch.phase !== 'activo' && lunch.phase !== 'terminado' && (
-            <button
-              className="b-warn b-third"
-              disabled={checkingIn}
-              title={`Lunch break de ${ctx.lunch_min} min`}
-              onClick={() => void handleLunch(true)}
-            >
-              <Sandwich size={16} /> Lunch
-            </button>
-          )}
           <button className="b-danger" onClick={() => void handleStop()}>
             <Power size={16} /> Terminar
           </button>
