@@ -123,22 +123,33 @@ export default function Admin() {
 
   /**
    * Volver a dejar la dinámica en cero: se borran las llegadas de todos los
-   * equipos. Doble confirmación porque no hay vuelta atrás y borra el trabajo
-   * de una jornada entera.
+   * equipos y se olvida el lunch. El lunch va junto porque lo programa el
+   * trigger al registrar la parada previa: dejarlo puesto sobre unas visitas
+   * que ya no existen haría que la siguiente vuelta se corriera sin comida.
+   *
+   * Doble confirmación porque no hay vuelta atrás y borra una jornada entera.
    */
   const [resetting, setResetting] = useState(false)
   const resetVisits = async () => {
     if (resetting) return
-    if (!confirm('¿Restablecer las visitas de TODOS los equipos?\n\nSe borran todas las llegadas registradas y las rutas vuelven a empezar desde la primera parada.')) return
+    if (!confirm('¿Restablecer las visitas de TODOS los equipos?\n\nSe borran todas las llegadas registradas y el lunch break: las rutas vuelven a empezar desde la primera parada.')) return
     if (!confirm('Esto no se puede deshacer. ¿Seguro?')) return
+    document.getElementById('admin-menu')?.hidePopover()
     setResetting(true)
     try {
-      // Supabase exige un filtro para borrar en bloque; este los abarca a todos.
-      const { error } = await supabase.from('visits').delete().not('team_id', 'is', null)
-      if (error) throw error
+      // Supabase exige un filtro para borrar o actualizar en bloque; estos los
+      // abarcan a todos.
+      const [v, t] = await Promise.all([
+        supabase.from('visits').delete().not('team_id', 'is', null),
+        supabase
+          .from('teams')
+          .update({ lunch_started_at: null, lunch_ended_at: null })
+          .not('id', 'is', null),
+      ])
+      if (v.error || t.error) throw v.error ?? t.error
       await loadAll()
     } catch {
-      alert('No se pudieron restablecer las visitas. Revisa la conexión e intenta de nuevo.')
+      alert('No se pudo restablecer. Revisa la conexión e intenta de nuevo.')
     } finally {
       setResetting(false)
     }
@@ -579,8 +590,8 @@ export default function Admin() {
             {resetting ? 'Restableciendo…' : 'Restablecer visitas de todos'}
           </button>
           <p className="muted">
-            Borra las llegadas registradas de todos los equipos. Las paradas, las rutas y los
-            equipos se quedan como están.
+            Borra las llegadas registradas y el lunch break de todos los equipos. Las paradas, las
+            rutas y los equipos se quedan como están.
           </p>
         </div>
 
