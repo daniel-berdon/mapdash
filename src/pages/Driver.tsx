@@ -51,6 +51,8 @@ import {
   claimTeam,
   finishDwell,
   getDriverContext,
+  isInUse,
+  isReleased,
   listTeams,
   manualCheckin,
   registerTrackingStart,
@@ -477,6 +479,19 @@ export default function Driver() {
     setStarted(false)
   }
 
+  /**
+   * Los tres botones del chofer fallan por lo mismo: el equipo se lo llevó otro
+   * teléfono (55006) o el admin soltó el enlace (55007). Sin esto, los dos
+   * casos salían como "revisa la conexión" y el chofer se quedaba dándole a un
+   * botón que no iba a funcionar nunca, sin saber por qué. useTracking ya
+   * distinguía los dos códigos; aquí no.
+   */
+  const rpcFailed = (e: unknown, msg: string) => {
+    if (isInUse(e)) return setTaken(0)
+    if (isReleased(e)) return forget()
+    alert(msg)
+  }
+
   /** Por si el GPS no dispara el geofence: el chofer marca la parada a mano. */
   const handleCheckin = async () => {
     if (!next || checkingIn) return
@@ -490,8 +505,11 @@ export default function Driver() {
         say(arrivalSpeech(next.name, next.dwell_min, !!ctx && preLunch(next, ctx)))
       }
       await load()
-    } catch {
-      alert('No se pudo registrar la parada. Revisa la conexión e intenta de nuevo.')
+    } catch (e) {
+      // La parada ya estaba registrada, o el admin cambió la ruta: recargar
+      // deja la pantalla en lo que de verdad hay en el servidor.
+      void load()
+      rpcFailed(e, 'No se pudo registrar la parada. Revisa la conexión e intenta de nuevo.')
     } finally {
       setCheckingIn(false)
     }
@@ -514,8 +532,8 @@ export default function Driver() {
     try {
       await finishDwell(token, dwell.stop.id, deviceId())
       await load()
-    } catch {
-      alert('No se pudo cerrar el tiempo de la parada. Revisa la conexión e intenta de nuevo.')
+    } catch (e) {
+      rpcFailed(e, 'No se pudo cerrar el tiempo de la parada. Revisa la conexión e intenta de nuevo.')
     } finally {
       setCheckingIn(false)
     }
@@ -533,8 +551,8 @@ export default function Driver() {
     try {
       await setLunch(token, deviceId(), false)
       await load()
-    } catch {
-      alert('No se pudo cambiar el lunch break. Revisa la conexión e intenta de nuevo.')
+    } catch (e) {
+      rpcFailed(e, 'No se pudo cambiar el lunch break. Revisa la conexión e intenta de nuevo.')
     } finally {
       setCheckingIn(false)
     }
