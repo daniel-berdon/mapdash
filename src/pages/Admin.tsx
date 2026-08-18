@@ -2,6 +2,7 @@ import {
   ArrowDown,
   ArrowUp,
   Check,
+  ChevronDown,
   Copy,
   Eye,
   EyeOff,
@@ -91,6 +92,21 @@ export default function Admin() {
   /** Equipos ocultos en el mapa (ruta + ubicación). */
   const [hiddenTeams, setHiddenTeams] = useState<Set<string>>(() => new Set())
   const [now, setNow] = useState(Date.now())
+  /**
+   * La lista de equipos se pliega en el celular: con cuatro equipos y la
+   * bitácora debajo no cabía nada. En escritorio no hay pliegue, así que el
+   * estado se sincroniza con el ancho en vez de dejarlo a merced del último
+   * toque: al agrandar la ventana la lista tiene que reaparecer sola.
+   */
+  const [teamsOpen, setTeamsOpen] = useState(
+    () => !window.matchMedia('(max-width: 720px)').matches,
+  )
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 720px)')
+    const apply = () => setTeamsOpen(!mq.matches)
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
+  }, [])
 
   // Reloj propio: la van no manda nada al quedarse sin señal, así que el paso
   // a gris tiene que venir del tiempo, no de un evento. Cada segundo, para que
@@ -569,8 +585,12 @@ export default function Admin() {
     now,
   )
 
+  // El reparto corto del celular es cosa del desplegable de equipos: en Paradas
+  // no hay nada que plegar y el panel se queda con su altura normal.
+  const folded = tab === 'equipos' && !teamsOpen
+
   return (
-    <div className="admin">
+    <div className={`admin${folded ? ' folded' : ''}`}>
       <aside>
         <header>
           <Brand />
@@ -623,6 +643,17 @@ export default function Admin() {
         <div className="scroll">
 
         {tab === 'equipos' && (
+          <details
+            className="team-fold"
+            open={teamsOpen}
+            onToggle={(e) => setTeamsOpen(e.currentTarget.open)}
+          >
+            <summary>
+              <VanIcon size={16} />
+              <b>{selTeam ? teams.find((t) => t.id === selTeam)?.name : 'Equipos'}</b>
+              <span className="grow">{teams.length}</span>
+              <ChevronDown size={16} />
+            </summary>
           <div className="list">
             {teams.map((t) => {
               const pos = positions[t.id]
@@ -760,6 +791,7 @@ export default function Admin() {
               <Plus size={16} /> Agregar equipo
             </button>
           </div>
+          </details>
         )}
 
         {tab === 'paradas' && (

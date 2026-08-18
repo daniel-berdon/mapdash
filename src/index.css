@@ -867,13 +867,50 @@ button.status { cursor: pointer; }
 .route li.lunch-row { color: var(--warn-2); }
 .route li.lunch-row svg { flex: none; }
 
+/* Desplegable de equipos: solo existe en el celular. En escritorio el <details>
+   va siempre abierto y su cabecera sobra. */
+.team-fold > summary { display: none; }
+.team-fold[open] > summary { margin-bottom: 8px; }
+
 @media (max-width: 720px) {
-  /* Porcentajes y no vh: en el móvil la barra de direcciones entra y sale, y
-     con vh el panel se pasaba de largo cada vez que aparecía. */
-  .admin { grid-template-columns: 1fr; grid-template-rows: 58% 42%; }
-  /* La lista es a lo que se viene aquí; el mapa acompaña. Con 45% el panel se
-     quedaba en un equipo visible y todo lo demás a fuerza de scroll. */
-  .admin aside { padding: 10px; gap: 10px; }
+  /* El panel se queda con lo que ocupe —plegado es una fila, desplegado crece
+     hasta su tope— y el mapa se lleva el resto. Con alturas fijas, plegar la
+     lista solo dejaba un hueco vacío en vez de darle sitio al mapa. */
+  /* Dos repartos, según la lista esté desplegada o no: plegada el panel se
+     queda en lo justo y el mapa se lleva el resto. Alturas explícitas y no
+     `auto`, que con el panel flexible por dentro se resolvía en cualquier cosa. */
+  .admin { grid-template-columns: 1fr; grid-template-rows: 62% 38%; }
+  .admin.folded { grid-template-rows: 42% 58%; }
+  /* Aquí scrollea el panel entero y no una zona de dentro: un solo scroll se
+     maneja mejor con el pulgar que dos anidados. */
+  .admin aside { padding: 10px; gap: 10px; overflow-y: auto; }
+  .admin aside .scroll { gap: 10px; flex: none; overflow: visible; }
+
+  /* La cabecera del desplegable: se toca para ver los equipos y dice cuál está
+     seleccionado mientras está plegada. */
+  .team-fold > summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    background: var(--bg);
+    cursor: pointer;
+    list-style: none;
+    font-size: 14px;
+  }
+  .team-fold > summary::-webkit-details-marker { display: none; }
+  .team-fold > summary b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .team-fold > summary .grow { margin-left: auto; color: var(--muted); font-size: 13px; }
+  .team-fold[open] > summary svg:last-child { transform: rotate(180deg); }
+
+  /* Dos eventos y a scrollear: la bitácora es de consulta, no es lo que se mira
+     todo el rato en un celular. El desvanecido de abajo evita que el recorte
+     parezca un renglón mal cortado y dice que la lista sigue. */
+  .log { max-height: 92px; }
+  .log ol { mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent); }
+
   /* La ficha ocupa el ancho útil: con 352px fijos rozaba los dos bordes. */
   .sheet { top: 8px; left: 8px; right: 8px; width: auto; max-height: calc(100% - 16px); }
   .admin-menu { top: 52px; left: 8px; right: 8px; width: auto; }
