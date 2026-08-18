@@ -502,6 +502,36 @@ button.status { cursor: pointer; }
   gap: 12px;
 }
 .admin aside header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+/* El menú va pegado a Salir, no repartido por el header: el hueco lo absorbe
+   este margen y los dos botones quedan juntos a la derecha. */
+.admin aside header .b-icon { margin-left: auto; }
+/* Menú de opciones del panel. popover nativo: vive en la capa superior, así
+   que se le da posición fija en vez de pelear con el z-index de la barra. */
+.admin-menu {
+  position: fixed;
+  top: 58px;
+  left: 12px;
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  margin: 0;
+  padding: 12px;
+  /* Cerrado va oculto por regla propia: la hoja del navegador, que es la que
+     oculta [popover], pierde contra cualquier regla de autor. Y así un
+     navegador sin soporte lo deja escondido en vez de clavado sobre el panel. */
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--panel);
+  color: inherit;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .45);
+}
+.admin-menu:popover-open { display: flex; }
+.admin-menu h4 { margin: 0; font-size: 13px; color: var(--muted); font-weight: 600; }
+.admin-menu p { margin: 0; font-size: 12px; line-height: 1.4; }
+.admin-menu::backdrop { background: rgba(0, 0, 0, .35); }
+
 .admin nav { display: flex; gap: 8px; }
 .admin nav button { flex: 1; }
 

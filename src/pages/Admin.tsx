@@ -10,6 +10,7 @@ import {
   LocateFixed,
   LogOut,
   MapPin,
+  Menu,
   MousePointerClick,
   Navigation,
   Plus,
@@ -119,6 +120,29 @@ export default function Admin() {
     if (v.data) setVisits(v.data)
     if (cfg.data) setSettings(cfg.data)
   }, [])
+
+  /**
+   * Volver a dejar la dinámica en cero: se borran las llegadas de todos los
+   * equipos. Doble confirmación porque no hay vuelta atrás y borra el trabajo
+   * de una jornada entera.
+   */
+  const [resetting, setResetting] = useState(false)
+  const resetVisits = async () => {
+    if (resetting) return
+    if (!confirm('¿Restablecer las visitas de TODOS los equipos?\n\nSe borran todas las llegadas registradas y las rutas vuelven a empezar desde la primera parada.')) return
+    if (!confirm('Esto no se puede deshacer. ¿Seguro?')) return
+    setResetting(true)
+    try {
+      // Supabase exige un filtro para borrar en bloque; este los abarca a todos.
+      const { error } = await supabase.from('visits').delete().not('team_id', 'is', null)
+      if (error) throw error
+      await loadAll()
+    } catch {
+      alert('No se pudieron restablecer las visitas. Revisa la conexión e intenta de nuevo.')
+    } finally {
+      setResetting(false)
+    }
+  }
 
   useEffect(() => {
     void loadAll()
@@ -539,10 +563,26 @@ export default function Admin() {
       <aside>
         <header>
           <Brand />
+          {/* popover nativo: se cierra solo al tocar fuera o con Escape. */}
+          <button className="b-ghost b-sm b-icon" popoverTarget="admin-menu" title="Más opciones">
+            <Menu size={15} />
+          </button>
           <button className="b-ghost b-sm" onClick={() => void supabase.auth.signOut()}>
             <LogOut size={15} /> Salir
           </button>
         </header>
+
+        <div id="admin-menu" popover="auto" className="admin-menu">
+          <h4>Opciones</h4>
+          <button className="b-danger" disabled={resetting} onClick={() => void resetVisits()}>
+            <RotateCcw size={15} />
+            {resetting ? 'Restableciendo…' : 'Restablecer visitas de todos'}
+          </button>
+          <p className="muted">
+            Borra las llegadas registradas de todos los equipos. Las paradas, las rutas y los
+            equipos se quedan como están.
+          </p>
+        </div>
 
         <nav>
           <button
