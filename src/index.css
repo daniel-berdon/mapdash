@@ -868,7 +868,15 @@ button.status { cursor: pointer; }
 .route li.lunch-row svg { flex: none; }
 
 @media (max-width: 720px) {
-  .admin { grid-template-columns: 1fr; grid-template-rows: 45vh 55vh; }
+  /* Porcentajes y no vh: en el móvil la barra de direcciones entra y sale, y
+     con vh el panel se pasaba de largo cada vez que aparecía. */
+  .admin { grid-template-columns: 1fr; grid-template-rows: 58% 42%; }
+  /* La lista es a lo que se viene aquí; el mapa acompaña. Con 45% el panel se
+     quedaba en un equipo visible y todo lo demás a fuerza de scroll. */
+  .admin aside { padding: 10px; gap: 10px; }
+  /* La ficha ocupa el ancho útil: con 352px fijos rozaba los dos bordes. */
+  .sheet { top: 8px; left: 8px; right: 8px; width: auto; max-height: calc(100% - 16px); }
+  .admin-menu { top: 52px; left: 8px; right: 8px; width: auto; }
 }
 
 /* ------------------------------------------------------------ marcadores --- */
