@@ -414,6 +414,19 @@ export default function Admin() {
   const resetLunch = (teamId: string) =>
     patchTeam(teamId, { lunch_started_at: null, lunch_ended_at: null })
 
+  /**
+   * Da el lunch por consumido sin esperar al chofer, igual que marcar a mano la
+   * llegada a una parada. Al que nunca arrancó se le pone también hora de
+   * inicio: sin ella el lunch cuenta como "sin usar" por más que tenga fin.
+   */
+  const endLunch = (team: Team) => {
+    const at = new Date().toISOString()
+    return patchTeam(team.id, {
+      lunch_started_at: team.lunch_started_at ?? at,
+      lunch_ended_at: at,
+    })
+  }
+
   const recalc = async (teamId: string, ordered?: Point[]) => {
     const list = ordered ?? teamStops(teamId)
     if (list.length < 2) {
@@ -1011,6 +1024,14 @@ export default function Admin() {
                             disabled={i === arr.length - 1}
                           >
                             <ArrowDown size={14} />
+                          </button>
+                          <button
+                            className="b-ghost b-icon"
+                            title="Marcar el lunch como terminado"
+                            disabled={lunch.phase === 'terminado'}
+                            onClick={() => void endLunch(sel)}
+                          >
+                            <Check size={14} />
                           </button>
                           <button
                             className="b-ghost b-icon"
