@@ -268,8 +268,12 @@ export default function Driver() {
    * La ruta está en pausa: corre el tiempo de la parada o el del lunch. El
    * chofer está detenido, así que nada de lo que tenga que ver con conducir se
    * narra hasta que vuelva a arrancar.
+   *
+   * 'programado' cuenta como pausa: el lunch ya está puesto para cuando termine
+   * esta parada, y en el hueco entre lo uno y lo otro tampoco se conduce. Sin
+   * él, cerrar la estancia soltaba una maniobra justo antes del aviso de comida.
    */
-  const paused = Boolean(dwell) || lunch.phase === 'activo'
+  const paused = Boolean(dwell) || lunch.phase === 'activo' || lunch.phase === 'programado'
 
   // Mismo motivo que `me`: el `?? []` creaba un array nuevo cada render y
   // projectOnLine acababa recorriendo la polilínea entera (miles de vértices)
@@ -290,6 +294,8 @@ export default function Driver() {
 
   // Avisos por voz: faltan 10, faltan 5, y el aviso de que ya puede seguir.
   const dwellSaid = useRef(new Set<string>())
+  /** Maniobras ya narradas, por `paso@metros`. Se vacía al retrazar la ruta. */
+  const spoken = useRef(new Set<string>())
   const dwellingAt = useRef<Stop | null>(null)
   useEffect(() => {
     const prev = dwellingAt.current
@@ -302,7 +308,10 @@ export default function Driver() {
         // Durante la actividad la ruta va callada; al cerrarla se retoma con la
         // maniobra en curso, sin esperar a cruzar los 300 m del próximo aviso.
         // Salvo que lo que siga sea el lunch: ahí tampoco se conduce todavía.
-        if (instruction && !paused) say(instruction)
+        if (instruction && !paused) {
+          say(instruction)
+          spoken.current.add(`${stepIdx}@${ANNOUNCE_M[0]}`)
+        }
       }
       return
     }
@@ -319,17 +328,31 @@ export default function Driver() {
   }, [dwell, say])
 
   /**
-   * Arranque del lunch. Lo programa el servidor al terminar la parada previa,
-   * así que el chofer se entera por aquí. Tras una recarga con el lunch ya en
-   * curso, `prev` es null y no se anuncia un inicio viejo.
+   * Arranque y cierre del lunch. Lo programa el servidor al terminar la parada
+   * previa, así que el chofer se entera por aquí. Tras una recarga con el lunch
+   * ya en curso, `prev` es null y no se anuncia un inicio viejo.
+   *
+   * El cierre se narra en este único sitio, valga el botón o el vencimiento del
+   * tiempo, y es donde vuelve la ruta: durante la comida la navegación va
+   * callada, así que al retomarla hay que decir por dónde se sigue.
    */
   const lunchPhase = useRef<LunchPhase | null>(null)
   useEffect(() => {
     const prev = lunchPhase.current
     lunchPhase.current = lunch.phase
-    if (prev && prev !== 'activo' && lunch.phase === 'activo') {
+    if (!prev || prev === lunch.phase) return
+    if (lunch.phase === 'activo') {
       say(`Inicia el tiempo de lunch break. Tienen ${ctx?.lunch_min ?? 45} minutos.`)
+    } else if (prev === 'activo' && lunch.phase === 'terminado') {
+      say('Lunch break terminado. Continúa la ruta.')
+      if (instruction) {
+        say(instruction)
+        spoken.current.add(`${stepIdx}@${ANNOUNCE_M[0]}`)
+      }
     }
+    // `instruction` se lee al cerrar el lunch; en las dependencias volvería a
+    // correr con cada maniobra.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lunch.phase, ctx?.lunch_min, say])
 
   /**
@@ -351,7 +374,6 @@ export default function Driver() {
   // Voz: cada maniobra se anuncia a 300 m y a 50 m, una sola vez cada una.
   // Con la ruta en pausa va callada: el chofer está parado y lo único que le
   // importa es el tiempo que le queda.
-  const spoken = useRef(new Set<string>())
   useEffect(() => {
     // El corte va antes de marcar la maniobra como dicha: callado no es lo
     // mismo que anunciado, y al volver la voz el chofer debe oír lo que falta.
@@ -511,7 +533,6 @@ export default function Driver() {
     try {
       await setLunch(token, deviceId(), false)
       await load()
-      say('Lunch break terminado. Continúa la ruta.')
     } catch {
       alert('No se pudo cambiar el lunch break. Revisa la conexión e intenta de nuevo.')
     } finally {
