@@ -457,7 +457,7 @@ export default function Driver() {
       }
       await registerTrackingStart(token, device).catch(() => {})
     } catch {
-      alert('No se pudo verificar el equipo. Revisa la conexión e intenta de nuevo.')
+      alert('No se pudo verificar la ruta. Revisa la conexión e intenta de nuevo.')
       return
     }
     setTaken(null)
@@ -595,7 +595,7 @@ export default function Driver() {
           Reintentar
         </button>
         <button className="ghost" onClick={forget}>
-          Elegir otro equipo
+          Elegir otra ruta
         </button>
       </div>
     )
@@ -611,7 +611,7 @@ export default function Driver() {
         <h1>Este enlace ya está en uso</h1>
         <p className="muted">
           Otro dispositivo está compartiendo la ubicación de <b>{ctx.team.name}</b>
-          {taken ? ` y reportó hace ${taken} min` : ''}. Un equipo solo puede llevarlo un teléfono
+          {taken ? ` y reportó hace ${taken} min` : ''}. Una ruta solo puede llevarla un teléfono
           a la vez.
         </p>
         <div className="card">
@@ -628,7 +628,7 @@ export default function Driver() {
             <li>
               <Power size={16} />
               <span>
-                Si eres tú quien debe llevar el equipo, pídele al organizador que libere el enlace
+                Si eres tú quien debe llevar esta ruta, pídele al organizador que libere el enlace
                 desde el panel. También se libera solo tras 5 minutos sin reportar.
               </span>
             </li>
@@ -646,9 +646,9 @@ export default function Driver() {
     return (
       <div className="splash">
         <Brand big />
-        <h1>Este equipo se movió a otra pestaña</h1>
+        <h1>Esta ruta se movió a otra pestaña</h1>
         <p className="muted">
-          Un teléfono solo puede compartir la ubicación de un equipo a la vez. Aquí se detuvo el
+          Un teléfono solo puede compartir la ubicación de una ruta a la vez. Aquí se detuvo el
           envío; la otra pestaña es la que está reportando.
         </p>
         <button className="b-ok b-big" onClick={() => void handleStart()}>
@@ -719,7 +719,7 @@ export default function Driver() {
           <Play size={18} /> Iniciar y compartir ubicación
         </button>
         <button className="b-ghost" onClick={forget}>
-          <RefreshCw size={15} /> No soy este equipo
+          <RefreshCw size={15} /> Esta no es mi ruta
         </button>
       </div>
     )
@@ -1021,18 +1021,18 @@ function TeamPicker({ onPick }: { onPick: (token: string) => void }) {
       </div>
     )
   }
-  if (!teams) return <Splash title="Cargando equipos…" sub="Un momento" />
+  if (!teams) return <Splash title="Cargando rutas…" sub="Un momento" />
   if (!teams.length) {
     return (
-      <Splash title="Todavía no hay equipos" sub="El organizador aún no los ha dado de alta." />
+      <Splash title="Todavía no hay rutas" sub="El organizador aún no las ha dado de alta." />
     )
   }
 
   return (
     <div className="splash">
       <Brand big />
-      <h1>¿Cuál es tu equipo?</h1>
-      <p className="muted">Elige el tuyo para ver tu ruta.</p>
+      <h1>¿Cuál es tu ruta?</h1>
+      <p className="muted">Elige la tuya para ver tus paradas.</p>
       <div className="picker">
         {teams.map((t) => (
           <button

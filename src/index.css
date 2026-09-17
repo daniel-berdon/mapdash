@@ -528,7 +528,33 @@ button.status { cursor: pointer; }
   box-shadow: 0 12px 32px rgba(0, 0, 0, .45);
 }
 .admin-menu:popover-open { display: flex; }
-.admin-menu h4 { margin: 0; font-size: 13px; color: var(--muted); font-weight: 600; }
+/* Con las secciones de importar y exportar el menú ya no cabe en un celular
+   acostado: se le pone tope y scroll propio en vez de salirse de la pantalla. */
+.admin-menu { max-height: calc(100vh - 70px); overflow-y: auto; }
+/* Exportar · Importar · Plantilla: tres mandos de la misma lista, en una línea. */
+.admin-menu .menu-row { display: flex; gap: 6px; }
+.admin-menu .menu-row button { flex: 1; justify-content: center; padding-inline: 6px; }
+/* Título de sección: icono al lado del texto, y una línea que la separa de la
+   anterior. Sin la línea, con cinco secciones el menú se lee como una lista
+   larga de botones sueltos. */
+.admin-menu h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.admin-menu h4 svg { flex: none; }
+.admin-menu h4 + * { margin-top: -2px; }
+.admin-menu h4:not(:first-child) {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+/* Lo que no tiene vuelta atrás se anuncia desde el título, no solo en el botón. */
+.admin-menu h4.danger { color: var(--bad-2); }
 .admin-menu p { margin: 0; font-size: 12px; line-height: 1.4; }
 .admin-menu::backdrop { background: rgba(0, 0, 0, .35); }
 
@@ -947,6 +973,19 @@ button.status { cursor: pointer; }
   font-weight: 600;
   white-space: nowrap;
 }
+
+/* Alejando el mapa, los nombres largos se pisaban unos con otros: la etiqueta
+   se recorta a un ancho fijo y el nombre completo sale al tocar la parada (o al
+   dejar el cursor encima, por el title del marcador). */
+.mk-point .lb {
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mk-point.open .lb { max-width: none; }
+/* El nombre abierto pasa por encima de las paradas vecinas, que es justo lo que
+   se estaba tapando. */
+.mk-point.open { z-index: 3; }
 
 .mk-point .seq {
   position: absolute;

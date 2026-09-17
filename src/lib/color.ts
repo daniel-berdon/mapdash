@@ -42,3 +42,12 @@ export function readable(hex: string, min = 0.28): string {
   const up = (v: number) => Math.round(Math.min(255, v * k + 40))
   return `rgb(${up(r)},${up(g)},${up(b)})`
 }
+
+/** Colores que se reparten a los equipos nuevos, en orden. */
+export const TEAM_COLORS = [
+  '#2563eb', '#dc2626', '#16a34a', '#ea580c', '#9333ea',
+  '#0891b2', '#ca8a04', '#db2777', '#4b5563',
+]
+
+/** Color por omisión de una parada, el mismo que pone la base. */
+export const POINT_COLOR = '#e11d48'

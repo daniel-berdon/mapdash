@@ -116,7 +116,7 @@ function pointEl(p: MapPoint): HTMLElement {
   return el(`
     <div class="mk mk-point${p.visited ? ' visited' : ''}" style="${vars}">
       <span class="ic">${stopIconSvg(p.icon)}${seq}</span>
-      <span class="lb">${esc(p.name)}</span>
+      <span class="lb" title="${esc(p.name)}">${esc(p.name)}</span>
     </div>`)
 }
 
@@ -163,6 +163,21 @@ export default function Map({
   // Los callbacks van por ref para no re-crear el mapa en cada render del padre.
   const cb = useRef({ onMapClick, onUserMove, onPointDragEnd, onPointClick })
   cb.current = { onMapClick, onUserMove, onPointDragEnd, onPointClick }
+
+  /**
+   * Parada con el nombre completo a la vista. Uno solo a la vez: si se pudieran
+   * abrir varios, al alejarse volvería el empalme de etiquetas que el recorte
+   * viene a resolver.
+   *
+   * Va en una ref y se re-aplica después de sincronizar, no en la firma del
+   * marcador: así abrir un nombre no obliga a rehacer el DOM, y el que está
+   * abierto sobrevive a que su parada se marque como visitada.
+   */
+  const openPoint = useRef<string | null>(null)
+  const applyOpen = useCallback(() => {
+    for (const [key, entry] of marks.current)
+      entry.mk.getElement().classList.toggle('open', key === `p:${openPoint.current}`)
+  }, [])
 
   const routesRef = useRef(routes)
   routesRef.current = routes
@@ -325,6 +340,8 @@ export default function Map({
           }
           mk.getElement().addEventListener('click', (ev: MouseEvent) => {
             ev.stopPropagation()
+            openPoint.current = openPoint.current === p.id ? null : p.id
+            applyOpen()
             cb.current.onPointClick?.(p.id)
           })
           return mk
@@ -348,7 +365,11 @@ export default function Map({
         marks.current.delete(key)
       }
     }
-  }, [points, vans])
+
+    // Después de upsert: un marcador que se rehizo nace sin la clase.
+    if (openPoint.current && !seen.has(`p:${openPoint.current}`)) openPoint.current = null
+    applyOpen()
+  }, [points, vans, applyOpen])
 
   // --- posición propia + cámara en modo navegación ---
   useEffect(() => {

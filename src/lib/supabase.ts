@@ -44,6 +44,10 @@ export interface Team {
   /** Puede estar en el futuro: se programa al llegar a la parada anterior. */
   lunch_started_at: string | null
   lunch_ended_at: string | null
+  /** Cronómetro de la vuelta: arranca al compartir ubicación (o en la primera
+      llegada) y se cierra con la llegada que completa la ruta. */
+  route_started_at: string | null
+  route_finished_at: string | null
 }
 
 /** Configuración global; una sola fila. */

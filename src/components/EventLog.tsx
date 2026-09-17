@@ -85,7 +85,7 @@ export default function EventLog({ teams, points }: { teams: Team[]; points: Poi
               <time>{new Date(e.at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</time>
               {createElement(k.Icon, { size: 13 })}
               <span className="txt">
-                <b style={{ color: readable(team?.color ?? '#9c9ca6') }}>{team?.name ?? 'Equipo'}</b>{' '}
+                <b style={{ color: readable(team?.color ?? '#9c9ca6') }}>{team?.name ?? 'Ruta'}</b>{' '}
                 {k.text}
                 {point && <> <b>{point.name}</b></>}
                 {e.detail && <span className="muted"> · {e.detail}</span>}

@@ -1,11 +1,15 @@
 import {
   ArrowDown,
   ArrowUp,
+  CalendarDays,
+  ChartColumn,
   Check,
   ChevronDown,
   Copy,
+  Download,
   Eye,
   EyeOff,
+  FileSpreadsheet,
   Flag,
   Info,
   LocateFixed,
@@ -26,18 +30,31 @@ import {
   Trash2,
   TriangleAlert,
   Unlink,
+  Upload,
   X,
 } from 'lucide-react'
-import { Fragment, createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Fragment,
+  createElement,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from 'react'
 import Brand from '../components/Brand'
 import EventLog from '../components/EventLog'
 import { STOP_ICONS, VanIcon, stopIcon } from '../components/icons'
 import Map, { type MapPoint, type MapVan } from '../components/Map'
-import { contrastText, readable } from '../lib/color'
+import { contrastText, readable, TEAM_COLORS } from '../lib/color'
 import { dwellLeftMs, fmtCountdown, lunchStatus } from '../lib/dwell'
 import { fmtAge, fmtDist, fmtDur, type LngLat } from '../lib/geo'
 import { geocodeOk, searchPlaces, type Place } from '../lib/geocode'
+import { parsePoints, parseTeams, sheets, templates } from '../lib/bulk'
+import { downloadReport, fmtRoute, routeMs } from '../lib/report'
 import { getRoute, optimizeOrder } from '../lib/routing'
+import { readXlsx, stampName, writeXlsx } from '../lib/xlsx'
 import {
   supabase,
   type Point,
@@ -62,11 +79,6 @@ const STALE_MS = 30000
  * aquí también: es lo único que decide si el panel dice "En uso" o "liberable".
  */
 const DEVICE_STALE_MS = 5 * 60_000
-
-const COLORS = [
-  '#2563eb', '#dc2626', '#16a34a', '#ea580c', '#9333ea',
-  '#0891b2', '#ca8a04', '#db2777', '#4b5563',
-]
 
 export default function Admin() {
   const [points, setPoints] = useState<Point[]>([])
@@ -141,14 +153,15 @@ export default function Admin() {
    * Volver a dejar la dinámica en cero: se borran las llegadas de todos los
    * equipos y se olvida el lunch. El lunch va junto porque lo programa el
    * trigger al registrar la parada previa: dejarlo puesto sobre unas visitas
-   * que ya no existen haría que la siguiente vuelta se corriera sin comida.
+   * que ya no existen haría que la siguiente vuelta se corriera sin comida. El
+   * cronómetro de ruta va por lo mismo: la vuelta nueva se mide desde cero.
    *
    * Doble confirmación porque no hay vuelta atrás y borra una jornada entera.
    */
   const [resetting, setResetting] = useState(false)
   const resetVisits = async () => {
     if (resetting) return
-    if (!confirm('¿Restablecer las visitas de TODOS los equipos?\n\nSe borran todas las llegadas registradas y el lunch break: las rutas vuelven a empezar desde la primera parada.')) return
+    if (!confirm('¿Restablecer las visitas de TODAS las rutas?\n\nSe borran todas las llegadas registradas y el lunch break: las rutas vuelven a empezar desde la primera parada.')) return
     if (!confirm('Esto no se puede deshacer. ¿Seguro?')) return
     document.getElementById('admin-menu')?.hidePopover()
     setResetting(true)
@@ -159,7 +172,12 @@ export default function Admin() {
         supabase.from('visits').delete().not('team_id', 'is', null),
         supabase
           .from('teams')
-          .update({ lunch_started_at: null, lunch_ended_at: null })
+          .update({
+            lunch_started_at: null,
+            lunch_ended_at: null,
+            route_started_at: null,
+            route_finished_at: null,
+          })
           .not('id', 'is', null),
       ])
       if (v.error || t.error) throw v.error ?? t.error
@@ -169,6 +187,154 @@ export default function Admin() {
     } finally {
       setResetting(false)
     }
+  }
+
+  /**
+   * Vaciar una lista entera. Las claves foráneas van en cascada: borrar las
+   * paradas arrastra sus route_stops y sus visitas, y borrar los equipos
+   * arrastra además rutas, posiciones y bitácora. Lo único que no cuelga de
+   * una parada es la geometría dibujada de la ruta, así que al vaciar paradas
+   * se borra aparte para no dejar líneas sobre un mapa sin puntos.
+   *
+   * Doble confirmación, igual que el restablecer: no hay vuelta atrás.
+   */
+  const [wiping, setWiping] = useState<'points' | 'teams' | null>(null)
+  const wipeAll = async (what: 'points' | 'teams') => {
+    if (wiping) return
+    const msg =
+      what === 'points'
+        ? `¿Borrar las ${points.length} paradas?\n\nSe vacían todas las rutas y se pierden las llegadas registradas. Las rutas se quedan.`
+        : `¿Borrar las ${teams.length} rutas?\n\nSe pierden sus paradas asignadas, sus links de chofer y sus llegadas. Las paradas se quedan.`
+    if (!confirm(msg)) return
+    if (!confirm('Esto no se puede deshacer. ¿Seguro?')) return
+    document.getElementById('admin-menu')?.hidePopover()
+    setWiping(what)
+    try {
+      // Supabase exige un filtro para borrar en bloque; este los abarca a todos.
+      const { error } = await supabase.from(what).delete().not('id', 'is', null)
+      if (error) throw error
+      if (what === 'points') {
+        const r = await supabase.from('routes').delete().not('team_id', 'is', null)
+        if (r.error) throw r.error
+      }
+      setEditPoint(null)
+      setOpenTeam(null)
+      setSelTeam(null)
+      setFocus(null)
+      setAdding(false)
+      await loadAll()
+    } catch {
+      alert('No se pudo borrar. Revisa la conexión e intenta de nuevo.')
+    } finally {
+      setWiping(null)
+    }
+  }
+
+  /**
+   * Reporte de la jornada en Excel. Se arma con lo que ya está en memoria: el
+   * panel tiene equipos, paradas y visitas al día por realtime, así que pedir
+   * los mismos datos otra vez solo agregaría una espera.
+   *
+   * Hay estado de "generando" porque la librería se descarga al primer uso: en
+   * una conexión lenta el botón se quedaría mudo unos segundos.
+   */
+  const [exporting, setExporting] = useState(false)
+  const exportReport = async () => {
+    if (exporting) return
+    document.getElementById('admin-menu')?.hidePopover()
+    setExporting(true)
+    try {
+      await downloadReport(teams, stops, visits, points, Date.now())
+    } catch {
+      alert('No se pudo generar el reporte. Intenta de nuevo.')
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  // ------------------------------------------------- alta y baja masiva ---
+
+  /**
+   * Un único input de archivo para las dos importaciones: qué se está
+   * importando lo dice esta ref, puesta justo antes de abrir el selector.
+   */
+  const fileInput = useRef<HTMLInputElement>(null)
+  const importKind = useRef<'points' | 'teams'>('points')
+  const [bulkBusy, setBulkBusy] = useState(false)
+
+  const askFile = (kind: 'points' | 'teams') => {
+    importKind.current = kind
+    document.getElementById('admin-menu')?.hidePopover()
+    fileInput.current?.click()
+  }
+
+  /**
+   * Lee el archivo, valida fila por fila y da de alta lo que pasó. Las filas
+   * con problemas se enumeran antes de tocar la base: es la última oportunidad
+   * de cancelar con el archivo entero a la vista.
+   *
+   * Importar agrega, nunca reemplaza. Para sustituir el catálogo está "Borrar
+   * todas" en este mismo menú, que al menos avisa dos veces de lo que se lleva.
+   */
+  const onFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    // Se limpia ya, para que elegir el mismo archivo otra vez vuelva a disparar.
+    e.target.value = ''
+    if (!file || bulkBusy) return
+    const kind = importKind.current
+    setBulkBusy(true)
+    try {
+      const sheet = await readXlsx(file)
+      const parsed = kind === 'points' ? parsePoints(sheet) : parseTeams(sheet, teams.length)
+      const what = kind === 'points' ? 'paradas' : 'rutas'
+      if (!parsed.rows.length) {
+        alert(
+          parsed.errors.length
+            ? `No se pudo importar nada:\n\n${parsed.errors.slice(0, 10).join('\n')}`
+            : `El archivo no trae ${what}.`,
+        )
+        return
+      }
+      if (parsed.errors.length) {
+        const shown = parsed.errors.slice(0, 8).join('\n')
+        const more = parsed.errors.length > 8 ? `\n…y ${parsed.errors.length - 8} más.` : ''
+        if (!confirm(`Hay ${parsed.errors.length} filas con problemas:\n\n${shown}${more}\n\n¿Agregar las ${parsed.rows.length} filas correctas?`))
+          return
+      } else if (!confirm(`Se van a agregar ${parsed.rows.length} ${what}. ¿Continuar?`)) {
+        return
+      }
+
+      // El cast es por el tipado de supabase-js: con el nombre de tabla en una
+      // variable no puede saber qué forma tiene la fila. Lo que entra ya pasó
+      // por parsePoints/parseTeams, que es la validación de verdad.
+      const { error } = await supabase.from(kind).insert(parsed.rows as never[])
+      if (error) throw error
+      await loadAll()
+      if (kind === 'points') setTab('paradas')
+      alert(`Listo: ${parsed.rows.length} ${what} agregadas.`)
+    } catch {
+      alert('No se pudo leer el archivo. Revisa que sea la plantilla en formato Excel (.xlsx).')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  /** Exportación y plantilla salen del mismo armador de hojas. */
+  const exportList = async (kind: 'points' | 'teams') => {
+    document.getElementById('admin-menu')?.hidePopover()
+    const at = Date.now()
+    await writeXlsx(
+      kind === 'points' ? sheets.points(points) : sheets.teams(teams, location.origin),
+      stampName(kind === 'points' ? 'mapdash-paradas' : 'mapdash-rutas', at),
+    )
+  }
+
+  const downloadTemplate = async (kind: 'points' | 'teams') => {
+    document.getElementById('admin-menu')?.hidePopover()
+    await writeXlsx(
+      kind === 'points' ? templates.points() : templates.teams(),
+      `plantilla-${kind === 'points' ? 'paradas' : 'rutas'}.xlsx`,
+    )
   }
 
   useEffect(() => {
@@ -190,6 +356,8 @@ export default function Admin() {
                     lunch_after_seq: row.lunch_after_seq,
                     lunch_started_at: row.lunch_started_at,
                     lunch_ended_at: row.lunch_ended_at,
+                    route_started_at: row.route_started_at,
+                    route_finished_at: row.route_finished_at,
                   }
                 : team,
             ),
@@ -248,7 +416,7 @@ export default function Admin() {
     const n = teams.length
     const { data } = await supabase
       .from('teams')
-      .insert({ name: `Equipo ${n + 1}`, color: COLORS[n % COLORS.length] })
+      .insert({ name: `Ruta ${n + 1}`, color: TEAM_COLORS[n % TEAM_COLORS.length] })
       .select()
       .single()
     if (data) {
@@ -298,7 +466,7 @@ export default function Admin() {
     value: string,
   ) => {
     const { error } = await supabase.from('teams').update({ [field]: value }).eq('id', id)
-    if (error) alert('No se pudo guardar el dato del equipo. Revisa la conexión.')
+    if (error) alert('No se pudo guardar el dato de la ruta. Revisa la conexión.')
   }
   const flushTeamText = (id: string, field: 'name' | 'driver_name' | 'phone', value: string) => {
     const key = `${id}:${field}`
@@ -309,7 +477,7 @@ export default function Admin() {
   }
 
   const delTeam = async (id: string) => {
-    if (!confirm('¿Quitar este equipo? Se borra su ruta y su posición.')) return
+    if (!confirm('¿Quitar esta ruta? Se borran sus paradas asignadas y su posición.')) return
     await supabase.from('teams').delete().eq('id', id)
     setTeams((t) => t.filter((x) => x.id !== id))
     if (openTeam === id) setOpenTeam(null)
@@ -617,23 +785,108 @@ export default function Admin() {
         </header>
 
         <div id="admin-menu" popover="auto" className="admin-menu">
-          <h4>Opciones</h4>
+          <h4>
+            <ChartColumn size={14} /> Reporte
+          </h4>
+          <button
+            className="b-ghost"
+            disabled={exporting || teams.length === 0}
+            onClick={() => void exportReport()}
+          >
+            <Download size={15} /> {exporting ? 'Generando…' : 'Exportar a Excel'}
+          </button>
+          <p className="muted">
+            Dos hojas: “Resumen” con el tiempo total de cada ruta y “Detalle” con cada parada, su
+            hora de llegada y cuánto tardó hasta la siguiente.
+          </p>
+
+          <h4>
+            <MapPin size={14} /> Paradas
+          </h4>
+          <div className="menu-row">
+            <button className="b-ghost" disabled={bulkBusy} onClick={() => void exportList('points')}>
+              <Download size={15} /> Exportar
+            </button>
+            <button className="b-ghost" disabled={bulkBusy} onClick={() => askFile('points')}>
+              <Upload size={15} /> Importar
+            </button>
+            <button className="b-ghost" onClick={() => void downloadTemplate('points')}>
+              <FileSpreadsheet size={15} /> Plantilla
+            </button>
+          </div>
+
+          <h4>
+            <VanIcon size={14} /> Rutas
+          </h4>
+          <div className="menu-row">
+            <button className="b-ghost" disabled={bulkBusy} onClick={() => void exportList('teams')}>
+              <Download size={15} /> Exportar
+            </button>
+            <button className="b-ghost" disabled={bulkBusy} onClick={() => askFile('teams')}>
+              <Upload size={15} /> Importar
+            </button>
+            <button className="b-ghost" onClick={() => void downloadTemplate('teams')}>
+              <FileSpreadsheet size={15} /> Plantilla
+            </button>
+          </div>
+          <p className="muted">
+            Importar agrega; no reemplaza lo que ya existe. Llena la plantilla y súbela tal cual:
+            las columnas que sobren se ignoran.
+          </p>
+
+          <h4>
+            <CalendarDays size={14} /> Jornada
+          </h4>
           <button className="b-danger" disabled={resetting} onClick={() => void resetVisits()}>
             <RotateCcw size={15} />
             {resetting ? 'Restableciendo…' : 'Restablecer visitas de todos'}
           </button>
           <p className="muted">
-            Borra las llegadas registradas y el lunch break de todos los equipos. Las paradas, las
-            rutas y los equipos se quedan como están.
+            Borra las llegadas registradas y el lunch break de todas las rutas. Las paradas y las
+            rutas se quedan como están.
+          </p>
+
+          <h4 className="danger">
+            <TriangleAlert size={14} /> Borrar en bloque
+          </h4>
+          <button
+            className="b-danger"
+            disabled={wiping !== null || points.length === 0}
+            onClick={() => void wipeAll('points')}
+          >
+            <Trash2 size={15} />
+            {wiping === 'points' ? 'Borrando…' : `Borrar todas las paradas (${points.length})`}
+          </button>
+          <button
+            className="b-danger"
+            disabled={wiping !== null || teams.length === 0}
+            onClick={() => void wipeAll('teams')}
+          >
+            <Trash2 size={15} />
+            {wiping === 'teams' ? 'Borrando…' : `Borrar todas las rutas (${teams.length})`}
+          </button>
+          <p className="muted">
+            Cada uno borra solo su lista: las paradas se llevan los trazos del mapa y las llegadas;
+            las rutas se llevan sus links de chofer. No hay deshacer.
           </p>
         </div>
+
+        {/* Fuera del popover: al cerrarse el menú, el diálogo del sistema ya está
+            abierto y el input tiene que seguir vivo para recibir el archivo. */}
+        <input
+          ref={fileInput}
+          type="file"
+          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          hidden
+          onChange={(e) => void onFile(e)}
+        />
 
         <nav>
           <button
             className={tab === 'equipos' ? 'b-on' : ''}
             onClick={() => setTab('equipos')}
           >
-            <VanIcon size={16} /> Equipos
+            <VanIcon size={16} /> Rutas
           </button>
           <button
             className={tab === 'paradas' ? 'b-on' : ''}
@@ -647,7 +900,7 @@ export default function Admin() {
         {tab === 'equipos' && teams.length > 0 && (
           <button className="b-ghost b-sm show-all" onClick={toggleAllTeams}>
             {allShown ? <EyeOff size={15} /> : <Eye size={15} />}
-            {allShown ? 'Ocultar todas las rutas' : 'Mostrar todas las rutas'}
+            {allShown ? 'Ocultar todas del mapa' : 'Mostrar todas en el mapa'}
           </button>
         )}
 
@@ -663,7 +916,7 @@ export default function Admin() {
           >
             <summary>
               <VanIcon size={16} />
-              <b>{selTeam ? teams.find((t) => t.id === selTeam)?.name : 'Equipos'}</b>
+              <b>{selTeam ? teams.find((t) => t.id === selTeam)?.name : 'Rutas'}</b>
               <span className="grow">{teams.length}</span>
               <ChevronDown size={16} />
             </summary>
@@ -677,6 +930,8 @@ export default function Admin() {
               const state =
                 pos?.status === 'en_maps' ? 'warn' : age < STALE_MS ? 'ok' : pos ? 'bad' : 'off'
               const dwell = activeDwell(t.id, visits, points, now)
+              // Corre mientras la ruta no se cierra; al completarse queda fijo.
+              const routeTime = fmtRoute(routeMs(t, now))
               const lunch = lunchStatus(
                 t.lunch_started_at,
                 t.lunch_ended_at,
@@ -710,8 +965,8 @@ export default function Admin() {
                         className={`b-ghost b-icon ${hiddenTeams.has(t.id) ? '' : 'lit'}`}
                         title={
                           hiddenTeams.has(t.id)
-                            ? 'Mostrar equipo en el mapa'
-                            : 'Ocultar equipo del mapa'
+                            ? 'Mostrar esta ruta en el mapa'
+                            : 'Ocultar esta ruta del mapa'
                         }
                         onClick={(e) => {
                           e.stopPropagation()
@@ -738,7 +993,7 @@ export default function Admin() {
                           tiempo; abrir la ficha es lo excepcional. */}
                       <button
                         className={`b-ghost b-icon ${openTeam === t.id ? 'lit' : ''}`}
-                        title="Ajustes del equipo"
+                        title="Ajustes de la ruta"
                         onClick={(e) => {
                           e.stopPropagation()
                           setOpenTeam(openTeam === t.id ? null : t.id)
@@ -752,7 +1007,7 @@ export default function Admin() {
                   <small className={`state ${finished ? 'hit' : state}`}>
                     {finished ? (
                       <>
-                        <Flag size={13} /> Ruta completada
+                        <Flag size={13} /> Completada · {routeTime}
                       </>
                     ) : (
                       <>
@@ -792,7 +1047,7 @@ export default function Admin() {
                     pos &&
                     !finished && (
                       <small className="state ruta">
-                        <Navigation size={13} /> En ruta
+                        <Navigation size={13} /> En ruta · {routeTime}
                       </small>
                     )
                   )}
@@ -801,7 +1056,7 @@ export default function Admin() {
               )
             })}
             <button className="b-primary" onClick={() => void addTeam()}>
-              <Plus size={16} /> Agregar equipo
+              <Plus size={16} /> Agregar ruta
             </button>
           </div>
           </details>
@@ -1083,7 +1338,7 @@ export default function Admin() {
               {sel.lunch_after_seq != null && (
                 <label className="lunch-cfg">
                   Duración del lunch: {settings?.lunch_min ?? 45} min{' '}
-                  <small className="muted">(igual para todos los equipos)</small>
+                  <small className="muted">(igual para todas las rutas)</small>
                   <input
                     type="range"
                     min={5}
@@ -1111,7 +1366,7 @@ export default function Admin() {
             </div>
 
             <button className="b-danger" onClick={() => void delTeam(sel.id)}>
-              <Trash2 size={15} /> Quitar equipo
+              <Trash2 size={15} /> Quitar ruta
             </button>
           </div>
         </div>
