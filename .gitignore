@@ -1,13 +1,20 @@
 node_modules
 dist
-.env
-.env.local
-.vercel
-*.local
 .DS_Store
+
+# Todas las variantes de Vite (.env.local, .env.production…), menos el ejemplo.
+# El repo es público: una sola key filtrada ahí queda en el historial para siempre.
+.env*
+!.env.example
+*.local
+
+.vercel
 
 # Config local del entorno de desarrollo, no del proyecto
 .claude
 
-# Cargas y reportes con datos del cliente: no van al repo (es público)
-outputs
+# Datos del cliente: cargas, reportes exportados y los archivos que manda.
+# Nombres y direcciones de negocios reales no van a un repo público.
+/outputs/
+*.xlsx
+*.csv
