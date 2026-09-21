@@ -8,3 +8,6 @@ dist
 
 # Config local del entorno de desarrollo, no del proyecto
 .claude
+
+# Cargas y reportes con datos del cliente: no van al repo (es público)
+outputs

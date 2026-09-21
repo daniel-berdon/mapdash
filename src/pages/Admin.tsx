@@ -595,12 +595,13 @@ export default function Admin() {
     })
   }
 
-  const recalc = async (teamId: string, ordered?: Point[]) => {
+  /** `false` = no se pudo trazar; quien llama en bucle para ahí en vez de encadenar avisos. */
+  const recalc = async (teamId: string, ordered?: Point[]): Promise<boolean> => {
     const list = ordered ?? teamStops(teamId)
     if (list.length < 2) {
       await supabase.from('routes').delete().eq('team_id', teamId)
       setRoutes((r) => r.filter((x) => x.team_id !== teamId))
-      return
+      return true
     }
     setBusy(teamId)
     try {
@@ -615,16 +616,42 @@ export default function Admin() {
       }
       await supabase.from('routes').upsert(row)
       setRoutes((prev) => [...prev.filter((x) => x.team_id !== teamId), row as RouteRow])
+      return true
     } catch (e) {
       alert(routeError(e, list))
+      return false
     } finally {
       setBusy(null)
     }
   }
 
+  /**
+   * Rutas con paradas pero sin trazo. Las paradas que entran por fuera del
+   * panel —una carga SQL, un respaldo restaurado— llegan sin geometría, y sin
+   * esto la única forma de dibujarlas sería "Optimizar orden", que además
+   * reordena y se lleva por delante la secuencia que pidió el cliente.
+   */
+  const untraced = teams.filter(
+    (t) => !routes.some((r) => r.team_id === t.id) && teamStops(t.id).length >= 2,
+  )
+
+  const [tracing, setTracing] = useState(0)
+
+  const traceAll = async () => {
+    document.getElementById('admin-menu')?.hidePopover()
+    const pending = untraced
+    for (const [i, t] of pending.entries()) {
+      setTracing(i + 1)
+      if (!(await recalc(t.id))) break
+    }
+    setTracing(0)
+  }
+
   const optimize = async (teamId: string) => {
     const list = teamStops(teamId)
     if (list.length < 3) return alert('Se necesitan al menos 3 paradas para optimizar.')
+    // Reordena de verdad: si el orden actual lo puso el cliente, se pierde.
+    if (!confirm('Optimizar reemplaza el orden actual de las paradas por el más corto.\n\n¿Continuar?')) return
     setBusy(teamId)
     try {
       // El primero se respeta como salida: en estas dinámicas todos arrancan
@@ -833,6 +860,20 @@ export default function Admin() {
             Importar agrega; no reemplaza lo que ya existe. Llena la plantilla y súbela tal cual:
             las columnas que sobren se ignoran.
           </p>
+          {(untraced.length > 0 || tracing > 0) && (
+            <>
+              <button className="b-ghost" disabled={tracing > 0} onClick={() => void traceAll()}>
+                <RefreshCw size={15} />
+                {tracing > 0
+                  ? `Trazando ${tracing} de ${untraced.length}…`
+                  : `Trazar ${untraced.length} ruta${untraced.length === 1 ? '' : 's'} sin trazo`}
+              </button>
+              <p className="muted">
+                Dibuja por calles las rutas que tienen paradas pero todavía no tienen trazo. Respeta
+                el orden que ya tienen: no reordena nada.
+              </p>
+            </>
+          )}
 
           <h4>
             <CalendarDays size={14} /> Jornada
