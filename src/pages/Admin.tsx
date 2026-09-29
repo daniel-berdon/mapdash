@@ -775,7 +775,17 @@ export default function Admin() {
   // orden de visitas tampoco se pinta sobre las paradas.
   const seqTeam = selTeam && !hiddenTeams.has(selTeam) ? selTeam : null
 
-  const mapPoints: MapPoint[] = points.map((p) => ({
+  // En Equipos el ojo también filtra paradas: solo se pintan las que tienen
+  // ruta en un equipo visible; las sin asignar se esconden. En Paradas se ven
+  // todas, porque ahí se crean, mueven y asignan.
+  const shownPoints =
+    tab === 'paradas'
+      ? points
+      : points.filter((p) =>
+          stops.some((s) => s.point_id === p.id && !hiddenTeams.has(s.team_id)),
+        )
+
+  const mapPoints: MapPoint[] = shownPoints.map((p) => ({
     ...p,
     seq: seqTeam ? stops.find((s) => s.team_id === seqTeam && s.point_id === p.id)?.seq : undefined,
     visited: selTeam ? visits.some((v) => v.team_id === selTeam && v.point_id === p.id) : false,
