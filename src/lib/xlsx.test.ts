@@ -9,7 +9,7 @@ import { strFromU8, unzipSync } from 'fflate'
 import { STOP_ICONS } from '../components/icons'
 import { dropdownFeature } from './xlsxDropdowns'
 import { parsePoints, parseTeams, sheets, templates } from './bulk'
-import { detailSheet, summarySheet } from './report'
+import { detailSheet, liveRuns, summarySheet } from './report'
 import type { Point, Team, Visit } from './supabase'
 import { asCells, type SheetSpec } from './xlsx'
 
@@ -45,8 +45,8 @@ const build = (specs: SheetSpec[]) =>
 
 it('el reporte se escribe con sus dos hojas', async () => {
   const file = await build([
-    { name: 'Resumen', rows: summarySheet([team], stops, visits, t0 + 120 * MIN) },
-    { name: 'Detalle', rows: detailSheet([team], stops, visits, points) },
+    { name: 'Resumen', rows: summarySheet(liveRuns([team], stops, visits, points), t0 + 120 * MIN) },
+    { name: 'Detalle', rows: detailSheet(liveRuns([team], stops, visits, points)) },
   ])
   const book = await readXlsxFile(file)
   expect(book.map((s) => s.sheet)).toEqual(['Resumen', 'Detalle'])

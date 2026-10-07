@@ -1,8 +1,9 @@
-// Reporte de la jornada en Excel: una hoja de resumen por equipo y otra con el
-// detalle parada por parada.
+// Reporte en Excel: una hoja de resumen por vuelta y otra con el detalle
+// parada por parada.
 //
-// Todo se deriva de lo que ya está en pantalla, sin consultar nada más: el
-// panel tiene equipos, paradas, rutas y visitas cargados y al día por realtime.
+// Una vuelta es una pasada completa por la ruta. Las anteriores vienen de
+// route_runs (se archivan al restablecer); la actual se arma con lo que el
+// panel ya tiene en pantalla.
 //
 // Las horas y las duraciones van como fecha y duración de verdad, no como
 // texto: así la hoja las puede ordenar, restar y promediar. Una duración en
@@ -10,7 +11,7 @@
 // al pasar de 24 horas.
 
 import { fmtDur } from './geo'
-import type { Point, Team, Visit } from './supabase'
+import type { Point, RouteRun, RunStop, Team, Visit } from './supabase'
 import { head, stampName, writeXlsx, type Cell, type Row } from './xlsx'
 
 export type { Row }
@@ -69,34 +70,72 @@ export interface ReportStop {
   seq: number
 }
 
-const teamState = (t: Team): string =>
-  t.route_finished_at ? 'Completada' : t.route_started_at ? 'En ruta' : 'Sin empezar'
+/** Una vuelta para el reporte: archivada o la que está en curso (sin reset_at). */
+export type Run = Omit<RouteRun, 'id' | 'team_id' | 'reset_at'> & { reset_at: string | null }
 
-/** Hoja 1: una línea por ruta, que es lo que se mira de un vistazo. */
-export function summarySheet(
+/**
+ * La vuelta actual de cada ruta, con la misma forma que una archivada. Las
+ * visitas a paradas que ya no están en la ruta no cuentan.
+ */
+export function liveRuns(
   teams: Team[],
   stops: ReportStop[],
   visits: Visit[],
-  now: number,
-): Row[] {
-  const rows = teams.map((t): Row => {
-    const teamStops = stops.filter((s) => s.team_id === t.id)
-    const done = teamStops.filter((s) =>
-      visits.some((v) => v.team_id === t.id && v.point_id === s.point_id),
-    ).length
-    return [
-      t.name,
-      t.driver_name ?? null,
-      t.phone ?? null,
-      teamState(t),
-      num(teamStops.length),
-      num(done),
-      at(t.route_started_at),
-      at(t.route_finished_at),
-      dur(routeMs(t, now)),
-    ]
-  })
+  points: Point[],
+): Run[] {
+  return teams.map((t) => ({
+    route_name: t.name,
+    driver_name: t.driver_name,
+    phone: t.phone,
+    started_at: t.route_started_at,
+    finished_at: t.route_finished_at,
+    reset_at: null,
+    stops: stops
+      .filter((s) => s.team_id === t.id)
+      .sort((a, b) => a.seq - b.seq)
+      .map((s): RunStop => {
+        const v = visits.find((x) => x.team_id === t.id && x.point_id === s.point_id)
+        return {
+          seq: s.seq,
+          name: points.find((p) => p.id === s.point_id)?.name ?? null,
+          arrived_at: v?.arrived_at ?? null,
+          left_at: v?.left_at ?? null,
+        }
+      }),
+  }))
+}
 
+/**
+ * Por ruta y, dentro de cada ruta, del día más viejo al más nuevo: así los
+ * lunes de una misma ruta quedan juntos. La vuelta sin arrancar va al final.
+ */
+export function sortRuns(runs: Run[]): Run[] {
+  const key = (r: Run) => r.started_at ?? r.reset_at ?? '9999'
+  return [...runs].sort(
+    (a, b) => a.route_name.localeCompare(b.route_name) || key(a).localeCompare(key(b)),
+  )
+}
+
+const runState = (r: Run): string =>
+  r.finished_at
+    ? 'Completada'
+    : r.reset_at
+      ? 'Incompleta'
+      : r.started_at
+        ? 'En ruta'
+        : 'Sin empezar'
+
+/**
+ * Una vuelta restablecida sin completar no tiene fin: su tiempo queda vacío
+ * en vez de seguir creciendo hasta hoy.
+ */
+const runMs = (r: Run, now: number): number | null =>
+  r.reset_at && !r.finished_at
+    ? null
+    : routeMs({ route_started_at: r.started_at, route_finished_at: r.finished_at }, now)
+
+/** Hoja 1: una línea por vuelta, que es lo que se mira de un vistazo. */
+export function summarySheet(runs: Run[], now: number): Row[] {
   return [
     head([
       'Ruta',
@@ -109,13 +148,24 @@ export function summarySheet(
       'Fin',
       'Tiempo total',
     ]),
-    ...rows,
+    ...runs.map((r): Row => [
+      r.route_name,
+      r.driver_name ?? null,
+      r.phone ?? null,
+      runState(r),
+      num(r.stops.length),
+      num(r.stops.filter((s) => s.arrived_at).length),
+      at(r.started_at),
+      at(r.finished_at),
+      dur(runMs(r, now)),
+    ]),
   ]
 }
 
 /**
  * Hoja 2: una línea por parada, en el orden de la ruta. Las paradas sin visitar
  * salen igual, con las horas vacías: el hueco es justo lo que se quiere ver.
+ * "Inicio de la vuelta" dice a qué día pertenece cada parada.
  *
  * Las dos duraciones son dato medido, no estimación:
  * - "Tiempo en parada" solo existe si el chofer cerró la estancia; si se fue
@@ -123,61 +173,58 @@ export function summarySheet(
  * - "Hasta la siguiente" es llegada contra llegada, así que incluye la
  *   estancia y el traslado. Vacío si la siguiente parada no se visitó.
  */
-export function detailSheet(
-  teams: Team[],
-  stops: ReportStop[],
-  visits: Visit[],
-  points: Point[],
-): Row[] {
+export function detailSheet(runs: Run[]): Row[] {
   const rows: Row[] = []
 
-  for (const t of teams) {
-    const teamStops = stops.filter((s) => s.team_id === t.id).sort((a, b) => a.seq - b.seq)
-    const visitOf = (pointId: string) =>
-      visits.find((v) => v.team_id === t.id && v.point_id === pointId) ?? null
-
-    teamStops.forEach((s, i) => {
-      const v = visitOf(s.point_id)
-      const next = teamStops[i + 1] ? visitOf(teamStops[i + 1].point_id) : null
+  for (const r of runs) {
+    const ordered = [...r.stops].sort((a, b) => a.seq - b.seq)
+    ordered.forEach((s, i) => {
+      const next = ordered[i + 1]
       rows.push([
-        t.name,
+        r.route_name,
+        at(r.started_at),
         num(s.seq),
-        points.find((p) => p.id === s.point_id)?.name ?? null,
-        at(v?.arrived_at ?? null),
-        at(v?.left_at ?? null),
-        dur(v?.left_at ? span(v.arrived_at, v.left_at) : null),
-        dur(v && next ? span(v.arrived_at, next.arrived_at) : null),
+        s.name,
+        at(s.arrived_at),
+        at(s.left_at),
+        dur(s.arrived_at && s.left_at ? span(s.arrived_at, s.left_at) : null),
+        dur(s.arrived_at && next?.arrived_at ? span(s.arrived_at, next.arrived_at) : null),
       ])
     })
   }
 
   return [
-    head(['Ruta', '#', 'Parada', 'Llegada', 'Salida', 'Tiempo en parada', 'Hasta la siguiente']),
+    head([
+      'Ruta',
+      'Inicio de la vuelta',
+      '#',
+      'Parada',
+      'Llegada',
+      'Salida',
+      'Tiempo en parada',
+      'Hasta la siguiente',
+    ]),
     ...rows,
   ]
 }
 
 /**
- * Arma y descarga el reporte de la jornada.
+ * Arma y descarga el reporte: las vueltas archivadas más la actual de cada
+ * ruta.
  */
-export async function downloadReport(
-  teams: Team[],
-  stops: ReportStop[],
-  visits: Visit[],
-  points: Point[],
-  now: number,
-): Promise<void> {
+export async function downloadReport(runs: Run[], now: number): Promise<void> {
+  const sorted = sortRuns(runs)
   await writeXlsx(
     [
       {
         name: 'Resumen',
-        rows: summarySheet(teams, stops, visits, now),
+        rows: summarySheet(sorted, now),
         widths: [18, 16, 14, 12, 9, 10, 17, 17, 15],
       },
       {
         name: 'Detalle',
-        rows: detailSheet(teams, stops, visits, points),
-        widths: [18, 5, 24, 17, 17, 17, 19],
+        rows: detailSheet(sorted),
+        widths: [18, 17, 5, 24, 17, 17, 17, 19],
       },
     ],
     stampName('mapdash-reporte', now),

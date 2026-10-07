@@ -78,6 +78,27 @@ export interface Visit {
   source: 'auto' | 'manual' | 'admin'
 }
 
+/** Parada de una vuelta archivada: foto de cómo estaba al restablecer. */
+export interface RunStop {
+  seq: number
+  name: string | null
+  arrived_at: string | null
+  left_at: string | null
+}
+
+/** Vuelta ya terminada (o cortada) que se guardó al restablecer la ruta. */
+export interface RouteRun {
+  id: number
+  team_id: string | null
+  route_name: string
+  driver_name: string | null
+  phone: string | null
+  started_at: string | null
+  finished_at: string | null
+  reset_at: string
+  stops: RunStop[]
+}
+
 export type EventKind =
   | 'inicio'
   | 'pausa'

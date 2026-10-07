@@ -52,7 +52,7 @@ import { dwellLeftMs, fmtCountdown, lunchStatus } from '../lib/dwell'
 import { fmtAge, fmtDist, fmtDur, type LngLat } from '../lib/geo'
 import { geocodeOk, searchPlaces, type Place } from '../lib/geocode'
 import { parsePoints, parseTeams, sheets, templates } from '../lib/bulk'
-import { downloadReport, fmtRoute, routeMs } from '../lib/report'
+import { downloadReport, fmtRoute, liveRuns, routeMs } from '../lib/report'
 import { getRoute, optimizeOrder } from '../lib/routing'
 import { readXlsx, stampName, writeXlsx } from '../lib/xlsx'
 import {
@@ -150,42 +150,35 @@ export default function Admin() {
   }, [])
 
   /**
-   * Volver a dejar la dinámica en cero: se borran las llegadas de todos los
-   * equipos y se olvida el lunch. El lunch va junto porque lo programa el
-   * trigger al registrar la parada previa: dejarlo puesto sobre unas visitas
-   * que ya no existen haría que la siguiente vuelta se corriera sin comida. El
-   * cronómetro de ruta va por lo mismo: la vuelta nueva se mide desde cero.
+   * Restablecer una ruta (o todas, sin id) para volver a hacerla otro día. La
+   * vuelta se archiva primero en route_runs, así que el reporte la sigue
+   * mostrando; después se borran llegadas, lunch y cronómetro, y se suelta el
+   * teléfono. Todo pasa en reset_route, en una sola transacción.
    *
-   * Doble confirmación porque no hay vuelta atrás y borra una jornada entera.
+   * Doble confirmación porque la ruta en curso se corta y no hay deshacer.
    */
-  const [resetting, setResetting] = useState(false)
-  const resetVisits = async () => {
+  const [resetting, setResetting] = useState<string | null>(null)
+  const resetRoute = async (teamId?: string) => {
     if (resetting) return
-    if (!confirm('¿Restablecer las visitas de TODAS las rutas?\n\nSe borran todas las llegadas registradas y el lunch break: las rutas vuelven a empezar desde la primera parada.')) return
-    if (!confirm('Esto no se puede deshacer. ¿Seguro?')) return
+    const name = teams.find((t) => t.id === teamId)?.name
+    const what = name ? `la ruta "${name}"` : 'TODAS las rutas'
+    if (
+      !confirm(
+        `¿Restablecer ${what}?\n\nLa vuelta actual queda guardada en el reporte. Se borran las llegadas y el lunch break, y se libera el teléfono del conductor: la ruta vuelve a empezar desde la primera parada.`,
+      )
+    )
+      return
+    if (!confirm('La vuelta en curso se corta. ¿Seguro?')) return
     document.getElementById('admin-menu')?.hidePopover()
-    setResetting(true)
+    setResetting(teamId ?? 'all')
     try {
-      // Supabase exige un filtro para borrar o actualizar en bloque; estos los
-      // abarcan a todos.
-      const [v, t] = await Promise.all([
-        supabase.from('visits').delete().not('team_id', 'is', null),
-        supabase
-          .from('teams')
-          .update({
-            lunch_started_at: null,
-            lunch_ended_at: null,
-            route_started_at: null,
-            route_finished_at: null,
-          })
-          .not('id', 'is', null),
-      ])
-      if (v.error || t.error) throw v.error ?? t.error
+      const { error } = await supabase.rpc('reset_route', { p_team_id: teamId ?? null })
+      if (error) throw error
       await loadAll()
     } catch {
       alert('No se pudo restablecer. Revisa la conexión e intenta de nuevo.')
     } finally {
-      setResetting(false)
+      setResetting(null)
     }
   }
 
@@ -231,9 +224,8 @@ export default function Admin() {
   }
 
   /**
-   * Reporte de la jornada en Excel. Se arma con lo que ya está en memoria: el
-   * panel tiene equipos, paradas y visitas al día por realtime, así que pedir
-   * los mismos datos otra vez solo agregaría una espera.
+   * Reporte en Excel. La vuelta actual se arma con lo que ya está en memoria
+   * (al día por realtime); solo las vueltas archivadas se piden a la base.
    *
    * Hay estado de "generando" porque la librería se descarga al primer uso: en
    * una conexión lenta el botón se quedaría mudo unos segundos.
@@ -244,7 +236,9 @@ export default function Admin() {
     document.getElementById('admin-menu')?.hidePopover()
     setExporting(true)
     try {
-      await downloadReport(teams, stops, visits, points, Date.now())
+      const { data, error } = await supabase.from('route_runs').select('*')
+      if (error) throw error
+      await downloadReport([...data, ...liveRuns(teams, stops, visits, points)], Date.now())
     } catch {
       alert('No se pudo generar el reporte. Intenta de nuevo.')
     } finally {
@@ -888,13 +882,13 @@ export default function Admin() {
           <h4>
             <CalendarDays size={14} /> Jornada
           </h4>
-          <button className="b-danger" disabled={resetting} onClick={() => void resetVisits()}>
+          <button className="b-danger" disabled={!!resetting} onClick={() => void resetRoute()}>
             <RotateCcw size={15} />
-            {resetting ? 'Restableciendo…' : 'Restablecer visitas de todos'}
+            {resetting === 'all' ? 'Restableciendo…' : 'Restablecer todas las rutas'}
           </button>
           <p className="muted">
-            Borra las llegadas registradas y el lunch break de todas las rutas. Las paradas y las
-            rutas se quedan como están.
+            Guarda la vuelta de cada ruta en el reporte y las deja listas para volver a hacerse:
+            sin llegadas, sin lunch break y con el teléfono liberado. Las paradas no cambian.
           </p>
 
           <h4 className="danger">
@@ -1415,6 +1409,18 @@ export default function Admin() {
                 </button>
               </div>
             </div>
+
+            <button
+              className="b-warn"
+              disabled={!!resetting}
+              onClick={() => void resetRoute(sel.id)}
+            >
+              <RotateCcw size={15} />
+              {resetting === sel.id ? 'Restableciendo…' : 'Restablecer ruta'}
+            </button>
+            <small className="muted">
+              Guarda esta vuelta en el reporte y deja la ruta lista para volver a hacerse.
+            </small>
 
             <button className="b-danger" onClick={() => void delTeam(sel.id)}>
               <Trash2 size={15} /> Quitar ruta
